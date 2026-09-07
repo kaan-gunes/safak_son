@@ -1,0 +1,13 @@
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+runtime/
+config/flight.local.json
+config/camera.local.json
+artifacts/
+
+.venv-model/
+:memory:.ses

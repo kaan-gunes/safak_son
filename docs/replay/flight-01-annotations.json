@@ -1,0 +1,1129 @@
+{
+  "schema": 1,
+  "method": "Codex görsel incelemesi: 81 kare, altılı 640×360 inceleme kopyalarında tek tek okundu. Kutular elle yaklaşık işaretlendi ve 1280×720 piksele çevrildi; eğitim etiketi veya hassas IoU ground truth değildir. Kategori skor/kutu sonuçlarından bağımsız görsel karardır.",
+  "frames": [
+    {
+      "name": "frame-000",
+      "png_sha256": "17654ed3b3a861daa4dfe1e27debfa8fb03e660639dad10691b996e18835de6d",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-001",
+      "png_sha256": "927672625fa165818c54f7fe4a3be7c0747dab3b19ead59431e0f1cc6a231ab1",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-002",
+      "png_sha256": "e3b8499ec4f265cb8534c8af99c101e028f3d7f96bc16e6aa436eb021238858f",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-003",
+      "png_sha256": "d307f0d49a992465aaaa1bd70666de7b7175988a4f620ae2f9c132d4c66e72e2",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-004",
+      "png_sha256": "a1b22dea2203e4ac59673c850051b4ec5819920163d3351581f93b802955b682",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-005",
+      "png_sha256": "9ad700e264a9abdb945d5f99e9377b50cedcbd8e00579051cc1f6d872ec9c4d8",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-006",
+      "png_sha256": "34022243864232d8193892ab974841bed4d7c70480cb74e4efee1b37197ed7a8",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-007",
+      "png_sha256": "7d6792d9f0e74697c0416a4f91b970525f1025ba142fc7b503c55211856a735b",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [
+        {
+          "detection_index": 0,
+          "reason": "ahşap yüzey",
+          "recorded_bbox": [
+            0.8070212602615356,
+            0.7117722630500793,
+            0.9967551827430725,
+            1.036742091178894
+          ]
+        }
+      ],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-008",
+      "png_sha256": "ec9ce9ff40548ddcb903114626e2398fbe5a6fecf355bfa72efe12f5ef8b0b9b",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-009",
+      "png_sha256": "74f84ac001e245c440759ac04feb8db7300402d2f2bc29b8e6e72f31f2021e9c",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-010",
+      "png_sha256": "3f1e24aa16d93bb92010fc9bbb4655af5e51bcfa2b5f3fa4ec511284d448a65c",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-011",
+      "png_sha256": "82e622e1b198743ad29ce2496ec9130306a17826a7b9a857c4eb21c6173b4f89",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-012",
+      "png_sha256": "4bdbbc4d7d0207c6c61b1fe9733d557afca049ed0bdbd4160a1a316ea5475649",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-013",
+      "png_sha256": "69d4870ab485fef3ee88ec994fecf33d075b8380cdf8477861c3a11601454dc5",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-014",
+      "png_sha256": "28a97d8f9e875ca2031569bea2ae88440d78da23ade5cb66d096239334d91b0c",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          0,
+          0,
+          152,
+          86
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-015",
+      "png_sha256": "7b077e7dda086d6cc4e969f24f4d470f8a0d82b549a45e2a619e19b743856c4f",
+      "category": "uncertain",
+      "target_boxes_px": [
+        [
+          350,
+          0,
+          382,
+          14
+        ]
+      ],
+      "false_detections": [],
+      "note": "Çok ince üst kenar parçası; nicel değerlendirmeden çıkarıldı."
+    },
+    {
+      "name": "frame-016",
+      "png_sha256": "c4accce9879df14ad81e9a99e39580fa89afc7bbb4a1ebbf7afd94659a3f7414",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-017",
+      "png_sha256": "985ed6224d4cd92ad007fe8939160a6b46f307d1d5d904c0140ef716d4a7272d",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          210,
+          0,
+          690,
+          30
+        ]
+      ],
+      "false_detections": [
+        {
+          "detection_index": 0,
+          "reason": "insan gölgesi",
+          "recorded_bbox": [
+            0.5780906677246094,
+            -0.02541317231953144,
+            0.8203801512718201,
+            0.2683041989803314
+          ]
+        }
+      ],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-018",
+      "png_sha256": "5cb3b086ac3a59c73f1f4f5bdd25da047a69307798eb2988047d62ec9d64539d",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          508,
+          0,
+          1136,
+          68
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-019",
+      "png_sha256": "475ddcf5c5a80ae1b28d8f92ddabd143302a72f7a7dd8376d29f1bb3d013d9e8",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          390,
+          0,
+          1004,
+          146
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-020",
+      "png_sha256": "d549373f7a72900a5cd00c2e38fb42135539e9b853b547afdcaac4988b88ec27",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          412,
+          0,
+          990,
+          210
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-021",
+      "png_sha256": "6fe70152a22cf5090a696e46ea1279461f0d6a4bddb2ed5ad25767285cfb4305",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          362,
+          0,
+          940,
+          388
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-022",
+      "png_sha256": "e77978c12954b8d6c34d21a44d797293111b87c272ff7d0c18f11115b538c3e4",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          306,
+          0,
+          912,
+          454
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-023",
+      "png_sha256": "61858467ae8d896661eddf06f79bcc6392042e6b437e14ce415f383059592d96",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          232,
+          0,
+          764,
+          478
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-024",
+      "png_sha256": "5fa1f2b2313a65eafdda94861bf0c19b970fe1be3caef0f127f6277af5184aab",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          342,
+          0,
+          880,
+          456
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-025",
+      "png_sha256": "7af3d8fa75f5378b478791dfd2ae8bbbb24faf9a76663c74d2af7b6461d9e245",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          382,
+          0,
+          914,
+          350
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-026",
+      "png_sha256": "f2f40821681d73fbd6262d0e76957f9b2700e9ae5ed58237346b1675b15cdd34",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          294,
+          0,
+          832,
+          350
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-027",
+      "png_sha256": "0c2404dadc548828d6a24549e8c1ab7568ff128ea92852365f854f81bb5cd91f",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          318,
+          0,
+          868,
+          348
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-028",
+      "png_sha256": "1a1b198d527923750b58ed3c1e7b99f7fe2b2474364e1f04fc9ce27c9a14cf84",
+      "category": "full",
+      "target_boxes_px": [
+        [
+          358,
+          24,
+          856,
+          528
+        ]
+      ],
+      "false_detections": [],
+      "note": "Dört kenarı görünür."
+    },
+    {
+      "name": "frame-029",
+      "png_sha256": "6b5bb035ee275c5856533208de4c742b920e6d479a94b31a5bef849a3efcf477",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          434,
+          256,
+          918,
+          720
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-030",
+      "png_sha256": "64ea146faae1e96013fde0ece623703a096041716d0ccc08d09aba9a8325b90d",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          362,
+          328,
+          818,
+          720
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-031",
+      "png_sha256": "9321cdbf4b5826dd4143c489830a86beb79069270b22e32acbf3b40331783bdb",
+      "category": "full",
+      "target_boxes_px": [
+        [
+          330,
+          280,
+          770,
+          714
+        ]
+      ],
+      "false_detections": [],
+      "note": "Dört kenarı görünür."
+    },
+    {
+      "name": "frame-032",
+      "png_sha256": "287c0a6558b5013f2bde5ee05c43eef9fee86651dfdbc8cfd0f2c6d75e20f9d7",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          326,
+          402,
+          738,
+          720
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-033",
+      "png_sha256": "831bd9d7a10696b3a17c6a09eec978e48aa0fdb3300faabccfdc503698a132cb",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          432,
+          642,
+          818,
+          720
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-034",
+      "png_sha256": "b98c8ae16a31a7f9e41fcff0bb8101bc59196bff7144406950b05347485bd442",
+      "category": "full",
+      "target_boxes_px": [
+        [
+          366,
+          88,
+          782,
+          506
+        ]
+      ],
+      "false_detections": [],
+      "note": "Dört kenarı görünür."
+    },
+    {
+      "name": "frame-035",
+      "png_sha256": "438c796a45fe58f29a6267961e7ae5157c68a2feca700b3c9863b7f4849c2f67",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          294,
+          0,
+          684,
+          378
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-036",
+      "png_sha256": "7eb9941e3a70ac8c2d4a62079357be25944047a8bb93d1fc337b90c0bbe78976",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          320,
+          0,
+          702,
+          170
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-037",
+      "png_sha256": "6374d0795c366673cbbd6edc3fc7428e5a4015c8d9285f93f8afe31d10b53021",
+      "category": "full",
+      "target_boxes_px": [
+        [
+          290,
+          8,
+          718,
+          452
+        ]
+      ],
+      "false_detections": [],
+      "note": "Dört kenarı görünür."
+    },
+    {
+      "name": "frame-038",
+      "png_sha256": "75a830e2a3c38ae9335f2840fc9f662c43f9258c1a6f0509369eb5afaf941743",
+      "category": "full",
+      "target_boxes_px": [
+        [
+          318,
+          124,
+          726,
+          534
+        ]
+      ],
+      "false_detections": [],
+      "note": "Dört kenarı görünür."
+    },
+    {
+      "name": "frame-039",
+      "png_sha256": "01fbec0024d8af9aa5021c129ceb07fd1d1f0c6f0118c61469fb29e378b61be0",
+      "category": "full",
+      "target_boxes_px": [
+        [
+          326,
+          124,
+          750,
+          546
+        ]
+      ],
+      "false_detections": [],
+      "note": "Dört kenarı görünür."
+    },
+    {
+      "name": "frame-040",
+      "png_sha256": "40f81a90f05626c906c926e3eaec3b44c1eed211ce45b63bc213e9e669865110",
+      "category": "full",
+      "target_boxes_px": [
+        [
+          278,
+          118,
+          750,
+          598
+        ]
+      ],
+      "false_detections": [],
+      "note": "Dört kenarı görünür."
+    },
+    {
+      "name": "frame-041",
+      "png_sha256": "981b63b7281e560b3d41acf9547ac53ee085c1e27f674496cbbad8a408e5d775",
+      "category": "full",
+      "target_boxes_px": [
+        [
+          292,
+          92,
+          762,
+          556
+        ]
+      ],
+      "false_detections": [],
+      "note": "Dört kenarı görünür."
+    },
+    {
+      "name": "frame-042",
+      "png_sha256": "69a68f7ce87cfbe42d1038d7be42ffab7d91c6e345c9878e10129f0cba6d852c",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          184,
+          0,
+          652,
+          414
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-043",
+      "png_sha256": "9519e3ba8cc4446cd72eabc700bcd6e14e293f3737ae5dfd9f8ba113a138e1c3",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          132,
+          0,
+          612,
+          444
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-044",
+      "png_sha256": "518e09fdd4f3e0c926ec2b97e7a96e9c59984eff866261f375a406e02bc6e0fb",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          216,
+          280,
+          744,
+          720
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-045",
+      "png_sha256": "fa6ac83e7fcde6f7f7efeaf77b9f5ad719df600ddb34025939d30682d0e1fa8d",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          230,
+          0,
+          792,
+          536
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-046",
+      "png_sha256": "d1b2603c0564e80fe0ce0c30aebaaad9ee47e1993d1cbb50e4859cef2829d394",
+      "category": "full",
+      "target_boxes_px": [
+        [
+          362,
+          104,
+          974,
+          712
+        ]
+      ],
+      "false_detections": [],
+      "note": "Dört kenarı görünür."
+    },
+    {
+      "name": "frame-047",
+      "png_sha256": "12f3e8204497e47948306c446206a2056cf22879128893b614dbc634f850efce",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          390,
+          0,
+          1058,
+          640
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-048",
+      "png_sha256": "0c0a4e485b8f830e10f40b597643af618cf51b10cb8738048d3ed31d40467d11",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          614,
+          0,
+          1280,
+          690
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-049",
+      "png_sha256": "5389e34378556a98d500546baf25629d00aa253e7498b6f16090b0fa270d5a7d",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          400,
+          0,
+          1118,
+          706
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-050",
+      "png_sha256": "484b7c0f8de2ab8c576903547ad5e40bedd3a70cf39f2e2b3e3d7320a7db6b03",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          252,
+          46,
+          982,
+          720
+        ]
+      ],
+      "false_detections": [
+        {
+          "detection_index": 1,
+          "reason": "kadraj sağındaki insan/gölge",
+          "recorded_bbox": [
+            0.9553937911987305,
+            0.7404747009277344,
+            0.9996681809425354,
+            1.0366710424423218
+          ]
+        }
+      ],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-051",
+      "png_sha256": "6401dd59a0e4293cecf2b0e8f865a2f2f9f0eea02f2d7e723eb1ed177b728083",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          0,
+          0,
+          636,
+          720
+        ]
+      ],
+      "false_detections": [
+        {
+          "detection_index": 1,
+          "reason": "insan gölgesi",
+          "recorded_bbox": [
+            0.6892385482788086,
+            0.5991759896278381,
+            0.8831601142883301,
+            1.091484546661377
+          ]
+        }
+      ],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-052",
+      "png_sha256": "caad1645debe29c3d06ca37ef67226c77c258e7d30ffd76ac6c11d15a9ba0684",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          168,
+          0,
+          884,
+          604
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-053",
+      "png_sha256": "58072c1650ddfc75335e97cb0ccaaa57e70193eb28f9a91405d5d3f75eb4ba8b",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          238,
+          0,
+          948,
+          590
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-054",
+      "png_sha256": "c837ba8cb918a92fe6b1abac63bff1fb3c83d71f6f27125d86037c4d834ea979",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          344,
+          0,
+          1064,
+          648
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-055",
+      "png_sha256": "b281d24a365b3f7f5f985961faf4563341bc34c3507d107bf84fdf375f3a31da",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          374,
+          0,
+          1072,
+          658
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-056",
+      "png_sha256": "322b81ea1f8a515ddf1679a1fab0da98b1fee2f7a43d836ff7ab0b823f9a1d51",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          306,
+          0,
+          988,
+          638
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-057",
+      "png_sha256": "d7e3a2ad10d4ef3fc9f3e09e5ee8e4e65c6b2933c351203305bd74963e3691e5",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          0,
+          0,
+          698,
+          548
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-058",
+      "png_sha256": "6f5e07e9761f44a8058f11d72d53e4e5bc0b9ad0f73e8c7bb4df05b2193afc4e",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          342,
+          0,
+          1042,
+          488
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-059",
+      "png_sha256": "5ddb7319773419f66b39f857a5cfbf544e98b991c78f6362c0f9f9f5f19ef2bc",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          332,
+          0,
+          1106,
+          486
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-060",
+      "png_sha256": "fe0e7b5527024e4a3a36c3ba127a6abdd21b56be1127460a9bbbe8aa1c884edc",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          228,
+          0,
+          1076,
+          546
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-061",
+      "png_sha256": "d1d1bbfa0d0190ada6f57ce91ea292ea12ffb67ab5ff7435ac01f02e852ba86f",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          196,
+          0,
+          1046,
+          574
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-062",
+      "png_sha256": "23e1273cc17614579a1092c14a777ee3bc1361d8824bd498287becf3b0b2e2be",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          362,
+          214,
+          1156,
+          720
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-063",
+      "png_sha256": "6d1d34b05c057b069213f96562c746ffed0eda7afda0e0afca8027f9e2d07498",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          278,
+          0,
+          1118,
+          720
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-064",
+      "png_sha256": "5bcf89988811c3f3606241215b8e97ee27732ce2f28b963bb9cf4313f076e3e8",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          370,
+          0,
+          1180,
+          720
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-065",
+      "png_sha256": "9c05337eaaa0d85e40ca8c44567ddbf43707bfd413b85c39b24f5cdaeceb9032",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          460,
+          0,
+          1242,
+          712
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-066",
+      "png_sha256": "1bfd4e6f05fbfb17201c897a240725944587f83a849d374d83a53e188a40d0ba",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          428,
+          0,
+          1134,
+          644
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-067",
+      "png_sha256": "802a9ab8d752c760f02a824ddd62b22186a1c651252cb23e8c224165f5e9c4c8",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          370,
+          0,
+          1078,
+          622
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-068",
+      "png_sha256": "1502d26ef7eedd0510658b10fa588bc610a5ce896043fbb21c29ac6d3b0e6fd3",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          312,
+          0,
+          1052,
+          668
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-069",
+      "png_sha256": "458620215299c20bb551e7157cbb53128334e3feb462379a91506c73db5d2301",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          364,
+          0,
+          1094,
+          642
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-070",
+      "png_sha256": "dc3a898160d27028b748efb0333293aff2824a8f4f85f80b9d7cc1ac83c45e2d",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          98,
+          0,
+          940,
+          684
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-071",
+      "png_sha256": "2df9878b5c9351ae5a8158ea8b1362a5506b4f124994bbaf01df7ea543af7663",
+      "category": "clipped",
+      "target_boxes_px": [
+        [
+          176,
+          0,
+          1014,
+          622
+        ]
+      ],
+      "false_detections": [],
+      "note": "Branda kadrajda kesiliyor; kutu yalnız görünen parçanın yaklaşık sınırı."
+    },
+    {
+      "name": "frame-072",
+      "png_sha256": "2b24d825d67301e3d08cfb28e19d94ceb048caec3503f21568b0fa7f5045b31c",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-073",
+      "png_sha256": "2794cb84d6c82c1c0af717b944d66416ec2914fb1b6898dd4bb41cde6f7c76a3",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [
+        {
+          "detection_index": 0,
+          "reason": "insan gölgesi",
+          "recorded_bbox": [
+            0.7711345553398132,
+            0.1510704904794693,
+            1.0020753145217896,
+            0.9961689710617065
+          ]
+        }
+      ],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-074",
+      "png_sha256": "2faa938c0e6ae6067fe33cf3e51a93119e48b4f82f807a8bcd184fd5ca4b8eb2",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [
+        {
+          "detection_index": 0,
+          "reason": "insan gölgesi",
+          "recorded_bbox": [
+            0.872772216796875,
+            -0.01652545854449272,
+            0.9993266463279724,
+            0.24857394397258759
+          ]
+        },
+        {
+          "detection_index": 1,
+          "reason": "insan gölgesi",
+          "recorded_bbox": [
+            0.7983117699623108,
+            -0.01868009939789772,
+            0.9967379570007324,
+            0.2603006958961487
+          ]
+        }
+      ],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-075",
+      "png_sha256": "05a34477b34a5665fcf34875e3b95ef67e41f5c4fdb899c401916b134b789336",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-076",
+      "png_sha256": "2adf622c572a8875f82a2873ddd9147f51b25efa07b42f6ce37f196793a62a78",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-077",
+      "png_sha256": "96f2ff37415b29955689e31da37723afee2837d5cf655cccd5b8ee07f1229a7f",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-078",
+      "png_sha256": "44781237526548241ce0910ce653b76792f1993f3134a67119a2bd0c44dae4a0",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-079",
+      "png_sha256": "a9f44ad1b102b9d9288af0516cbf5642a64208527733fea040478ea2f5938ccb",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    },
+    {
+      "name": "frame-080",
+      "png_sha256": "e60bac3331e5fa7d6bd8dadf98c71948f0bb665bfb1c71562ed8f5d7868b5aa8",
+      "category": "absent",
+      "target_boxes_px": [],
+      "false_detections": [],
+      "note": "Görünen alanda hedef branda yok."
+    }
+  ]
+}

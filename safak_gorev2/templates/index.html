@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ŞAFAK UAV · Görev 2</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='panel.css') }}">
+  <script defer src="{{ url_for('static', filename='panel.js') }}"></script>
+</head>
+<body data-video-fps="{{ video_fps }}">
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">Ş</span><div><strong>ŞAFAK <span>UAV</span></strong><small>GÖREV 2 / QUAD TEST</small></div></div>
+    <div class="top-status"><span id="run-kind" class="pill amber">BAĞLANTI BEKLENİYOR</span><span class="pill" id="link-status">PIXHAWK —</span><time id="clock">—</time></div>
+  </header>
+  <main>
+    <div class="context-row"><span class="eyebrow">CANLI UÇUŞ İZLEME</span><span>2 × 2 m mavi hedef <b>→</b> kırmızı temsili yük</span></div>
+    <div id="offline" class="alert hidden" role="alert">TARAYICI–Pİ BAĞLANTISI KESİLDİ · Pixhawk ve görev durumu bu ekrandan doğrulanamıyor</div>
+    <div id="demo-banner" class="alert amber hidden">SENTETİK DEMO · Gerçek kamera, Hailo veya Pixhawk verisi değildir.</div>
+    <section class="flight-grid">
+      <div class="video-card">
+        <div class="section-bar"><h1>Kamera</h1><div><span id="backend">HAILO BEKLENİYOR</span><span id="fps">— FPS</span></div></div>
+        <div class="video-surface">
+          <img id="video" alt="Canlı kamera görüntüsü ve mavi hedef tespitleri">
+          <div id="video-wait">Görüntü bekleniyor</div>
+          <div id="video-stale" class="hidden">GÖRÜNTÜ GÜNCEL DEĞİL</div>
+          <div class="video-label"><span class="record-dot"></span><span id="frame-age">— ms</span><span>IMX219 · AŞAĞI BAKIŞ</span></div>
+        </div>
+        <div class="video-footer"><span id="geometry">Kamera ve telemetri eşleşmesi bekleniyor</span><span id="frame-id">KARE —</span></div>
+      </div>
+      <aside class="mission-card">
+        <span class="eyebrow">HEDEF ETKİLEŞİMİ</span>
+        <h2 id="state">Başlatılıyor</h2>
+        <p id="reason">Pi üzerindeki uygulamadan veri bekleniyor.</p>
+        <div class="lock-heading"><span>Kesintisiz kilit</span><strong id="lock-time">— / — sn</strong></div>
+        <progress id="lock" max="1" value="0" aria-label="Kesintisiz hedef kilidi"></progress>
+        <div class="target-metrics"><div><small>Merkeze yatay hata</small><strong id="error">— <em>m</em></strong></div><div><small>Görsel kamera yüksekliği</small><strong id="visual-height">— <em>m</em></strong></div></div>
+        <div class="height-note">Yükseklik görüntüden tahmin edilir. Lidar / sonar ölçümü değildir.</div>
+        <div id="release" class="release pending"><span class="release-symbol">○</span><div><strong id="release-title">Temsili bırakma bekleniyor</strong><small id="release-detail">Fiziksel servo komutu gönderilmez.</small></div></div>
+        <div class="route-line"><span>AUTO madde <strong id="mission-seq">—</strong></span><span>Son LAND <strong id="land-seq">—</strong></span></div>
+      </aside>
+    </section>
+    <section class="telemetry-grid" aria-label="Pixhawk uçuş verileri">
+      <article class="metric"><small>UÇUŞ MODU</small><strong id="flight-mode">—</strong><span id="armed">ARM bilgisi bekleniyor</span></article>
+      <article class="metric"><small>HOME'A GÖRE İRTİFA</small><strong id="relative-alt">— <em>m</em></strong><span>Yerden mesafe değildir</span></article>
+      <article class="metric"><small>YATAY / DÜŞEY HIZ</small><strong id="speed">— <em>m/s</em></strong><span id="vertical-speed">Düşey — m/s</span></article>
+      <article class="metric"><small>BATARYA</small><strong id="battery">— <em>V</em></strong><span id="battery-extra">— A · — %</span></article>
+      <article class="metric"><small>GPS / EKF</small><strong id="gps">—</strong><span id="gps-extra">HDOP — · EKF —</span></article>
+      <article class="metric"><small>ROLL / PITCH</small><strong id="attitude">—</strong><span id="heading">Başlık —°</span></article>
+    </section>
+    <section class="lower-grid">
+      <article class="events-card"><div class="section-bar"><h2>Olay kaydı</h2><span>BU ÇALIŞTIRMA</span></div><ol id="events"><li class="empty">Henüz bir olay yok.</li></ol></article>
+      <article class="system-card"><h2>Bağlantı ve kontrol</h2><dl><div><dt>Kumanda seçimi</dt><dd id="rc-mode">—</dd></div><div><dt>Pixhawk sürümü</dt><dd id="firmware">—</dd></div><div><dt>Telemetri yaşı</dt><dd id="telem-age">—</dd></div><div><dt>Çalışma süresi</dt><dd id="uptime">—</dd></div></dl><p id="preflight">Sistem denetleniyor.</p><p class="read-only">Salt okunur panel · Kumandadan Loiter'a geçiş kontrolü pilota verir.</p></article>
+    </section>
+  </main>
+</body>
+</html>

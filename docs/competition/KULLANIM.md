@@ -1,0 +1,73 @@
+# İki renkli Görev 2 — ayrı uygulama
+
+7 Eylül 2026. Eski `safak_gorev2.main`, mavi merkezleme kodu ve mevcut saha profilleri değiştirilmedi. Yeni giriş noktası `safak_gorev2.competition.main`. Bu belge yazılımın nasıl seçileceğini anlatır; gerçek hexacopter uçuş kabul raporu değildir.
+
+| Seçim | Akış |
+|---|---|
+| `config/competition-center.json` | İki renk → geometri ve süreli doğrulama → GUIDED merkezleme/alçalma → ilgili servo → tarama irtifasına çıkış → kesilen AUTO waypoint → diğer renk → mevcut dönüş/bitiş/LAND rotası |
+| `config/competition-sighting.json` | İki renk → kısa AI kutusu doğrulaması → ilgili servo; AUTO sürer. Merkezleme, alçalma ve PnP yok. |
+
+Her iki akışta hedef sırası serbesttir. Mavi 2×2 m hedefe **kırmızı** yük; kırmızı 1×1 m hedefe **mavi** yük gönderilir. Merkezleme, kırmızı hedef için 1 m geometri kullanır. Eski mavi geometri kodu değiştirilmeden kırmızı görüntünün R/B kanalları yalnız bu yeni akış içinde uyarlanır.
+
+Hızlı seçenek kameranın/modelin tespit üretmesini hâlâ gerektirir. Varsayılan kısa doğrulama 3 bağımsız kare ve en az 0,10 saniyedir; yinelenen/eski kareler sayılmaz, kutu sıçraması süreyi sıfırlar. Bu bir mühendislik tercihidir. Görüntünün herhangi bir yerindeki geçerli AI kutusu yeterlidir: hedef üzerinde olmayı, kare hedef boyutunu veya yük isabetini kanıtlamaz. Görüşe ilk girdiği anda bırakan hareketli araçta önemli isabet hatası olabilir. Kamera hiç çalışmıyorsa hiçbir seçenek görsel bırakma yapmaz.
+
+## Puan konusunda
+
+[Resmî V6 şartname §10.2.2](https://cdn.teknofest.org/media/upload/userFormUpload/2026_%C4%B0HA_Yar%C4%B1%C5%9Fmalar%C4%B1_%C5%9Eartnamesi_TR_v6_n7Mv5.pdf), mavi/kırmızı hedeflere karşı renkli yükleri ister. Son durma noktası merkezden 10 m dışındaysa ilgili isabet kriteri sıfırdır. Görüntü işleme kanıtı da gerekir. Hedef tespiti Direk 2 dışından geçildikten sonra yapılır; görev bitiş çizgisi ve inişle tamamlanır. **Yalnız yük bırakmak otomatik puan garantisi değildir.** Kaynak, 7 Eylül 2026 tarihinde resmî yarışma sayfasındaki bağlantıdan tekrar okundu.
+
+## Donanım bilgileri ve kalan alanlar
+
+Kullanıcının 7 Eylül beyanı: yarışma aracı hexacopter; kırmızı yük AUX1, mavi yük AUX2; başlangıç 180°, bırakma 90°. MAVLink çıkış eşlemesi profilde kırmızı=9, mavi=10 olarak girildi. **Derece PWM değildir.** Her yükün `release_pwm` alanı, bu mekanizmada ölçülen mikro­saniye değeri gelene kadar `null`; `bench_verified=false` kaldı. Başlangıçta servo sürülmez ve otomatik kapatma yapılmaz. Mekanizmanın yük takılmadan önce kapatılması/başlangıç konumu tezgâhta doğrulanmalıdır.
+
+Gerçek sürücü [ArduPilot servo komutu](https://en.ardupilot.org/dev/docs/mavlink-move-servo.html) `MAV_CMD_DO_SET_SERVO` gönderir. Yalnız tezgâhta doğrulanmış iki ayrı çıkış, FC'den okunan `SERVOx_FUNCTION=0` ve MIN/MAX içinde PWM kabul edilir; parametre yazmaz. ACK ve ilgili kanalın yeni `SERVO_OUTPUT_RAW` PWM değeri birlikte beklenir. Bu, **komut/çıkış kanıtıdır; yükün mekanizmadan ayrıldığına dair sensör kanıtı değildir**. ACK kaybı/ret/çökmede otomatik tekrar yoktur; yük durumu belirsiz bırakılır. [MAVLink ACK açıklaması](https://mavlink.io/en/services/command.html).
+
+`competition-base.json` içindeki IMX219 kalibrasyonu mevcut kamera adayına aittir. Hexacopter kamera montaj ofseti bilinmediği için `offset_body_m=null` bırakıldı. Kamera değişirse o kameranın doğrulanmış kalibrasyonu gerekir. 9 m hedef irtifası ve mevcut kontrol limitleri önceki testten alınmış başlangıç tercihleridir; hexacopter uçuş doğrulaması değildir. `sighting` kalibrasyonu yüklemez ve geometri kullanmaz. Ortak temel dosyanın değişmesi eski saha profillerini etkilemez.
+
+HEF için Pi'deki `safakyepyeni.hef` adı korunur. Bu dosya Mac'te yoksa aynı klasördeki `best.hef` yalnız beklenen SHA256 birebir tutarsa okunur. Model dosyası yeniden adlandırılmaz/kopyalanmaz. Her iki adın hash'i aynı bilinen yeni modele işaret etmelidir.
+
+## Rota ve çalışma seçimi
+
+Uygulama ARM/DISARM, rota yükleme veya otomatik rota üretme yapmaz. Otonom TAKEOFF, Direk 2'nin dışından geçiş, tarama, dönüş, bitiş çizgisi ve son LAND, Mission Planner'da gerçek saha koordinatlarıyla hazırlanır. Görev 1'in iki sekizi bu hedef bırakma programının parçası değildir; ayrıca uygun AUTO rotasıyla uçulur.
+
+Yeni profillerde gerçek saha koordinatı uydurulmadı. Uçuştan önce:
+
+1. `mission_fingerprint`: hazırlanıp FC'den geri alınmış WPL rotasının parmak izi.
+2. `search_start_seq`, `search_end_seq`: yalnız tarama WAYPOINT maddeleri. Bitiş/iniş maddeleri bu aralık dışında kalır.
+3. `entry_gates`: Direk 2'nin dışından dolaşan incelenmiş rotada sıralı GPS geçiş kapıları. Her kapı `[[latA,lonA],[latB,lonB]]`. N/E koordinatlarında A→B doğrultusunun negatif yanından pozitif yanına, iki uç arasından geçilmelidir. Tek waypoint numarası direk dışından geçme kanıtı sayılmaz. Kapıları yanlış yerleştirmek parkur uygunluğunu kanıtlamaz; gerçek saha rotası ayrıca incelenir.
+4. `finish_gate`: bitiş çizgisinin doğru yönlü iki GPS ucu; yalnız tarama bölümünden sonra sayılır.
+5. `flight_polygon`: izinli uçuş alanının GPS köşeleri. Kalkış/merkezleme/yeniden katılma alanını kapsamalı.
+6. `route_reviewed=true`: tanımlanan parkur, tarama ve yeniden katılma koridoru sahada incelendikten sonra.
+7. `sortie_id`: yüklerin yeniden takıldığı uçuşa özel kimlik. Yeniden başlatmada veya strateji değiştirirken **aynı kimlik korunur**; iki seçenek ortak kalıcı yük defteri kullanır. Kayıtlı kimlikle uçuş yeniden açılmaz. Bu alanı değiştirmek fiziksel yükleri yerine koymaz.
+
+Salt okunur rota incelemesi:
+
+```bash
+python -m safak_gorev2.competition.prepare --mission saha.waypoints
+```
+
+HOME satırı GPS başlangıcında değişebildiği için parmak izi uçurulan seq1+ maddelerini kapsar; irtifalar MAVLink float32 olarak normalize edilir. Bu sürüm TAKEOFF/WAYPOINT/son LAND ve param1–3=0, param4=0, autocontinue=1 rotasını destekler. ArduCopter’in LAND için geri gönderdiği, Copter’de kullanılmayan param4=±1 değeri de kabul edilir. DO_JUMP veya görev içi servo komutu kullanmayın. Saha koordinatı/görev yüklemesi bu araçtan gönderilmez.
+
+Dosya denetimi; USB/kamera açılmaz:
+
+```bash
+python -m safak_gorev2.competition.main --config config/competition-center.json --check
+python -m safak_gorev2.competition.main --config config/competition-sighting.json --check
+```
+
+Yeni gözlem uygulaması; uçuş/servo komutu göndermez:
+
+```bash
+python -m safak_gorev2.competition.main --config config/competition-center.json --mode observe
+```
+
+Pi'nin mevcut Hailo ortamında çalıştırın; gerekiyorsa eski launcher'daki `--hailo-env` dosyasını kullanın. Kamera/USB'yi kullanan diğer uygulama önce yerde kapatılmalıdır. Yeni panel `http://PI_IP:8081/`; iki renk ve iki yük durumu görünür. `/api/competition` yeni durum ayrıntılarıdır. `/api/status` ve `/frame.jpg` eski kaydediciyle uyumludur. Görevde canlı etiketli görüntüyü hakemlere göstermek gerekir.
+
+Gerçek bırakma ancak alanlar tamamlanıp `actuator` açıkça `servo` seçilerek ve `--mode flight` ile açılır. `actuator=simulated` fiziksel servo göndermez fakat **flight modunda GUIDED uçuş kontrolü yapar**; masaüstü simülasyonu sanılmamalıdır. Varsayılan mod observe ve aktüatör simulated'dır. Profil eksikse flight başlamaz.
+
+## Uçuş davranışı ve kanıt sınırı
+
+Program önce yerde DISARM görür, ardından pilotun başlattığı AUTO kalkışı bekler. RC değişimi/pilot devri kalıcıdır; havada yeniden başlatma veya inip tekrar ARM kilidi kaldırmaz. Bayat kamera, konum veya RC ile bırakma yapılmaz. Merkezleme sırasında hedef kaybolursa duruş/LOITER devri uygulanır. İlk bırakmadan sonra arama irtifasına çıkılır, kesilen waypoint yeniden seçilir ve yeni MISSION_CURRENT ile AUTO heartbeat doğrulanır. Yüklerden biri görülmezse atlanmış bir bırakma icat edilmez; AUTO rotası kalan yükü taşıyarak bitişe ve LAND'e gider. İkinci bırakma da doğrudan RTL'ye atlamaz.
+
+Yeni kayıtlar `runtime/competition/<strategy>/`; ortak yük defteri `runtime/competition/payload-ledger/payloads.sqlite3`. `ACK_ACCEPTED`, `SIMULATED`, `UNCERTAIN`, `REJECTED`, `BLOCKED` ayrı durumlardır. DONE yalnız iki komut kabulü, bitiş geçişi ve iniş görüldüğünde oluşur; fiziksel isabet/yarışma başarısı anlamına gelmez.
+
+Doğrulama sonuçları `TESTLER.md` dosyasında tutulur. Gerçek kamera, iki mekanizma ve hexacopter uçuş testi bu yazılım çalışmasında yapılmadı. Pi'ye dağıtım veya gerçek araç komutu gönderilmedi.

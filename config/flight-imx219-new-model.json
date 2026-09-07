@@ -1,0 +1,43 @@
+{
+  "camera": {
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "calibration_file": "config/camera.field-candidate.json",
+    "confidence_min": 0.4,
+    "offset_body_m": [
+      -0.03,
+      0.0,
+      0.05
+    ],
+    "target_side_m": 2.0
+  },
+  "control": {
+    "target_camera_height_m": 9.0,
+    "center_hold_s": 1.5,
+    "release_hold_s": 3.0,
+    "max_horizontal_speed_mps": 0.4,
+    "max_descent_mps": 0.15,
+    "minimum_camera_height_m": 8.5,
+    "minimum_intercept_relative_alt_m": 9.5,
+    "acquire_s": 0.5
+  },
+  "link": {
+    "device": null
+  },
+  "mission": {
+    "direct_land_corridor_checked": true,
+    "takeoff_mode": "manual",
+    "return_mode": "rtl"
+  },
+  "web": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "fps": 8,
+    "jpeg_quality": 65,
+    "width": 960
+  },
+  "runtime_dir": "runtime/imx219-new-model",
+  "hef_file": "best_hailo_model/safakyepyeni.hef",
+  "hef_sha256": "8433d13ecee9d05852178a0f38c057217d5a7f2db4436036b2a978e877c192e2"
+}

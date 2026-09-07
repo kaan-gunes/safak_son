@@ -1,0 +1,30 @@
+{
+  "base_config": "competition-base.json",
+  "strategy": "sighting",
+  "actuator": "simulated",
+  "vehicle_type": 13,
+  "sortie_id": null,
+  "mission_fingerprint": null,
+  "search_start_seq": null,
+  "search_end_seq": null,
+  "route_reviewed": false,
+  "entry_gates": [],
+  "finish_gate": [],
+  "flight_polygon": [],
+  "quick_frames": 3,
+  "quick_hold_s": 0.1,
+  "quick_iou": 0.25,
+  "release_ack_timeout_s": 2.0,
+  "servos": {
+    "kirmizi": {
+      "channel": 9,
+      "release_pwm": null,
+      "bench_verified": false
+    },
+    "mavi": {
+      "channel": 10,
+      "release_pwm": null,
+      "bench_verified": false
+    }
+  }
+}

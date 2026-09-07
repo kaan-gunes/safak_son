@@ -1,0 +1,374 @@
+from dataclasses import replace
+import hashlib
+import json
+from pathlib import Path
+import threading
+from unittest.mock import Mock
+
+import cv2
+import numpy as np
+import pytest
+from pymavlink.dialects.v20 import ardupilotmega as mav
+
+from conftest import target, telemetry
+from safak_gorev2.competition.config import Options, Servo, COLORS
+from safak_gorev2.competition.controller import DualController
+from safak_gorev2.competition.link import CompetitionLink
+from safak_gorev2.competition.payload import PayloadLedger
+from safak_gorev2.competition.route import crossed, inside, RouteProgress, mission_digest
+from safak_gorev2.competition.vision import Candidate, DualVision
+from safak_gorev2.geometry import Calibration
+from safak_gorev2.mavlink_io import TelemetryStore, PARAMETERS, validate_mission
+from safak_gorev2.types import Action, Detection, Frame, PoseSample, MissionItem
+
+
+@pytest.fixture
+def plan(mission):
+    return validate_mission(list(mission.items[:-1])+[
+        MissionItem(3,16,3,410000100,290000100,6),
+        replace(mission.items[-1],seq=4)])
+
+
+@pytest.fixture
+def options(plan):
+    return Options(strategy='sighting', vehicle_type=13, sortie_id='test-flight',
+        mission_fingerprint=mission_digest(plan), search_start_seq=2,search_end_seq=2,route_reviewed=True,
+        entry_gates=(((40.999,29.),(41.001,29.)),),
+        finish_gate=((40.999,29.),(41.001,29.)),
+        flight_polygon=((40.99,28.99),(41.01,28.99),(41.01,29.01),(40.99,29.01)))
+
+
+def candidate(fid, now, color='mavi', metric=False, box=(.3,.2,.7,.8)):
+    return Candidate(color,fid,now,.95,box,target(fid,now) if metric else None)
+
+
+def ready(cfg, options, plan):
+    c=DualController(cfg,options)
+    c.step(99,telemetry(99,armed=False,landed=1),(),None,0,plan)
+    c.route.entry_count=1
+    return c
+
+
+def source(msg):
+    msg._header.srcSystem=1
+    msg._header.srcComponent=1
+    return msg
+
+
+def link_ready(cfg,options,plan,tmp_path):
+    store=TelemetryStore()
+    store.value=telemetry(100)
+    store.mission=plan
+    store.preflight_problem=lambda:None
+    conn=Mock()
+    ledger=PayloadLedger(tmp_path,'flight')
+    link=CompetitionLink(cfg,store,True,threading.Event(),options,ledger,conn)
+    link.route_authorized=True
+    return link,conn,ledger
+
+
+def test_legacy_files_unchanged():
+    manifest=json.loads(Path('docs/competition/legacy-sha256.json').read_text())
+    assert all(hashlib.sha256(Path(p).read_bytes()).hexdigest()==digest for p,digest in manifest.items())
+
+
+@pytest.mark.parametrize('order',[('mavi','kirmizi'),('kirmizi','mavi')])
+def test_quick_two_colors_correct_payload_once(cfg,options,plan,order):
+    c=ready(cfg,options,plan)
+    statuses={}
+    releases=[]
+    for i in range(30):
+        now=100+i*.05
+        color=order[0] if not statuses else order[1]
+        d=c.step(now,telemetry(now),(candidate(i,now,color),),i,now,plan,release_status=statuses)
+        for a in d.actions:
+            if a.kind=='payload':
+                releases.append(a.values[:2]); statuses[a.values[0]]='SIMULATED'
+    assert releases==[('kirmizi' if color=='mavi' else 'mavi',color) for color in order]
+    assert c.done==set(COLORS)
+    assert not any(a.kind=='mode' for a in d.actions)
+
+
+@pytest.mark.parametrize('kind',['stale','future','duplicate','low_score','wrong_id','wrong_color','outside','takeoff','before_gate','wrong_route'])
+def test_no_release_invalid_inputs(cfg,options,plan,kind):
+    c=ready(cfg,options,plan)
+    for i in range(20):
+        now=100+i*.05
+        at=now-1 if kind=='stale' else now+1 if kind=='future' else now
+        fid=1 if kind=='duplicate' else i
+        x=candidate(fid,at)
+        if kind=='low_score': x=replace(x,confidence=.1)
+        if kind=='wrong_id': x=replace(x,frame_id=fid+100)
+        if kind=='wrong_color': x=replace(x,color='yesil')
+        t=telemetry(now)
+        if kind=='outside': t=replace(t,lat=42.)
+        if kind=='takeoff': t=replace(t,mission_seq=1)
+        if kind=='before_gate': c.route.entry_count=0
+        p=replace(plan,items=plan.items[:2]+(replace(plan.items[2],z=30.),)+plan.items[3:]) if kind=='wrong_route' else plan
+        d=c.step(now,t,(x,),fid,at,p)
+        assert not any(a.kind=='payload' for a in d.actions)
+
+
+def test_quick_target_jump_and_gap_reset(cfg,options,plan):
+    c=ready(cfg,replace(options,quick_frames=4),plan)
+    for i in range(20):
+        now=100+i*.1
+        box=(.1,.1,.2,.2) if i%2 else (.7,.7,.8,.8)
+        d=c.step(now,telemetry(now),(candidate(i,now,box=box),),i,now,plan)
+        assert not d.actions
+
+
+def test_no_midair_restart_and_pilot_latch(cfg,options,plan):
+    c=DualController(cfg,options); c.route.entry_count=1
+    for i in range(10):
+        now=100+i*.05
+        assert not c.step(now,telemetry(now),(candidate(i,now),),i,now,plan).actions
+    c=ready(cfg,options,plan)
+    c.step(100,telemetry(100),(),0,100,plan)
+    d=c.step(100.05,telemetry(100.05,mode='LOITER'),(),1,100.05,plan)
+    assert d.state=='PILOT_CONTROL'
+    d=c.step(100.1,telemetry(100.1),(),2,100.1,plan)
+    assert not d.actions
+
+
+def test_quick_ack_timeout_never_retries(cfg,options,plan):
+    c=ready(cfg,options,plan)
+    for i in range(60):
+        now=100+i*.05
+        d=c.step(now,telemetry(now),(candidate(i,now),),i,now,plan)
+    assert c.state=='ABORTED'
+    assert c.requested=={'mavi'}
+
+
+def test_metric_full_cycle_resume_then_other_color(cfg,options,plan):
+    options=replace(options,strategy='center')
+    c=ready(cfg,options,plan)
+    statuses={}; releases=[]; mode='AUTO'; down=-6.; seq=2
+    for i in range(600):
+        now=100+i*.05
+        if c.state=='INTERCEPT' and c.child.state=='DESCENDING': down=-3.55
+        if c.state=='CLIMB': down=-6.
+        t=telemetry(now,mode=mode,down=down,relative_alt_m=-down,mission_seq=seq)
+        color='mavi' if 'mavi' not in c.done else 'kirmizi'
+        d=c.step(now,t,(candidate(i,now,color,metric=True),),i,now,plan,release_status=statuses)
+        for a in d.actions:
+            if a.kind=='mode': mode=a.values[0]
+            if a.kind=='resume': seq=a.values[0]
+            if a.kind=='payload':
+                releases.append(a.values[:2]); statuses[a.values[0]]='SIMULATED'
+        if len(c.done)==2 and c.state=='SEARCHING' and c.child is None: break
+    assert releases==[('kirmizi','mavi'),('mavi','kirmizi')]
+    assert c.done==set(COLORS)
+    assert mode=='AUTO' and seq==2
+
+
+def test_target_loss_during_center_never_releases(cfg,options,plan):
+    c=ready(cfg,replace(options,strategy='center'),plan)
+    mode='AUTO'
+    for i in range(100):
+        now=100+i*.05
+        xs=(candidate(i,now,metric=True),) if mode=='AUTO' else ()
+        d=c.step(now,telemetry(now,mode=mode),xs,i,now,plan)
+        for a in d.actions:
+            assert a.kind!='payload'
+            if a.kind=='mode': mode=a.values[0]
+        if c.state=='ABORTED': break
+    assert c.state=='ABORTED'
+
+
+def test_route_end_preserves_payload_and_requires_finish(cfg,options,plan):
+    c=ready(cfg,options,plan)
+    c.step(100,telemetry(100),(),0,100,plan)
+    d=c.step(100.05,telemetry(100.05,mission_seq=3),(candidate(1,100.05),),1,100.05,plan)
+    assert d.state=='AUTO_FINISH' and not d.actions
+    d=c.step(100.1,telemetry(100.1,armed=False,landed=1),(),2,100.1,plan)
+    assert d.state=='INCOMPLETE'
+
+
+def test_directed_finite_gate_and_freshness(options):
+    gate=((40.999,29.),(41.001,29.))
+    assert crossed(gate,(41.,28.9999),(41.,29.0001))
+    assert not crossed(gate,(41.,29.0001),(41.,28.9999))
+    assert not crossed(gate,(42.,28.9999),(42.,29.0001))
+    route=RouteProgress(options)
+    route.update(telemetry(100,lon=28.9999),100,.6)
+    route.update(telemetry(102,lon=29.0001),102,.6)
+    assert not route.entered
+    route.update(telemetry(102.1,lon=28.9999),102.1,.6)
+    route.update(telemetry(102.2,lon=29.0001),102.2,.6)
+    assert route.entered
+
+
+def test_ledger_restart_each_payload_once(tmp_path):
+    a=PayloadLedger(tmp_path,'flight')
+    assert a.reserve('kirmizi',{})
+    b=PayloadLedger(tmp_path,'flight')
+    assert b.statuses()=={'kirmizi':'UNCERTAIN'}
+    assert not b.reserve('kirmizi',{})
+    assert b.reserve('mavi',{})
+    assert PayloadLedger(tmp_path,'new-loaded-flight').reserve('kirmizi',{})
+
+
+def test_hex_identity(cfg,options,plan,tmp_path):
+    link,conn,ledger=link_ready(cfg,options,plan,tmp_path)
+    link.ingest(source(mav.MAVLink_heartbeat_message(13,3,128,3,4,3)),100)
+    assert link.store.autopilot_confirmed
+    link.ingest(source(mav.MAVLink_heartbeat_message(2,3,128,3,4,3)),100.1)
+    assert not link.store.autopilot_confirmed
+
+
+def test_real_servo_exact_channel_ack_and_output(cfg,options,plan,tmp_path,monkeypatch):
+    options=replace(options,actuator='servo',servos={'kirmizi':Servo(9,1500,True),'mavi':Servo(10,1500,True)})
+    link,conn,ledger=link_ready(cfg,options,plan,tmp_path)
+    for ch in (9,10):
+        link.servo_params.update({f'SERVO{ch}_FUNCTION':0,f'SERVO{ch}_MIN':1000,f'SERVO{ch}_MAX':2000})
+    monkeypatch.setattr('safak_gorev2.competition.link.time.monotonic',lambda:100.)
+    a=Action('payload',('kirmizi','mavi',7,100.,'AUTO'))
+    link._perform(100,(a,))
+    args=conn.mav.command_long_send.call_args.args
+    assert args[2:6]==(183,0,9,1500)
+    link._perform(100,(a,))
+    assert conn.mav.command_long_send.call_count==1
+    ack=source(mav.MAVLink_command_ack_message(183,0,0,0,245,191))
+    link.ingest(ack,100.05)
+    assert link.snapshot_status()['kirmizi']=='SENT'
+    output=source(mav.MAVLink_servo_output_raw_message(100000,0,*([1000]*8),servo9_raw=1500))
+    link.ingest(output,100.1)
+    assert link.snapshot_status()['kirmizi']=='ACK_ACCEPTED'
+    assert ledger.statuses()['kirmizi']=='ACK_ACCEPTED'
+
+
+@pytest.mark.parametrize('bad',['observe','pilot','disarm','stale','wrong_payload','motor','no_gate','outside'])
+def test_servo_refuses_unsafe_or_unverified(cfg,options,plan,tmp_path,bad,monkeypatch):
+    options=replace(options,actuator='servo',servos={'kirmizi':Servo(9,1500,True),'mavi':Servo(10,1500,True)})
+    link,conn,ledger=link_ready(cfg,options,plan,tmp_path)
+    for ch in (9,10):
+        link.servo_params.update({f'SERVO{ch}_FUNCTION':0,f'SERVO{ch}_MIN':1000,f'SERVO{ch}_MAX':2000})
+    if bad=='observe': link.allow_control=False
+    if bad=='pilot': link.store.pilot_override=True
+    if bad=='disarm': link.store.value=telemetry(100,armed=False)
+    if bad=='motor': link.servo_params['SERVO9_FUNCTION']=33
+    if bad=='no_gate': link.route_authorized=False
+    if bad=='outside': link.store.value=telemetry(100,lat=42.)
+    monkeypatch.setattr('safak_gorev2.competition.link.time.monotonic',lambda:100.)
+    link._perform(100,(Action('payload',('kirmizi','kirmizi' if bad=='wrong_payload' else 'mavi',7,99. if bad=='stale' else 100.,'AUTO')),))
+    conn.mav.command_long_send.assert_not_called()
+
+
+def test_vision_both_colors_and_one_meter_red(cfg):
+    cal=Calibration(1280,720,np.array([[800.,0,640],[0,800,360],[0,0,1]]),np.zeros(5),"synthetic",(0,0,1280,720),.1)
+    vision=DualVision(cfg,cal)
+    image=np.full((720,1280,3),80,np.uint8)
+    cv2.rectangle(image,(480,200),(800,520),(255,20,20),-1)
+    cv2.rectangle(image,(940,280),(1100,440),(20,20,255),-1)
+    ds=(Detection('mavi_hedef',.95,(480/1280,200/720,800/1280,520/720)),
+        Detection('kirmizi_hedef',.95,(940/1280,280/720,1100/1280,440/720)))
+    frame=Frame(1,100,100,image,ds)
+    candidates,_=vision.detect(frame,PoseSample(100,0,0,0,0,0,-5.05),'center')
+    assert {x.color for x in candidates}==set(COLORS)
+    assert all(x.metric.camera_height_m==pytest.approx(5.,abs=.1) for x in candidates)
+    candidates,_=DualVision(cfg).detect(frame,None,'sighting')
+    assert len(candidates)==2 and all(x.metric is None for x in candidates)
+
+
+def test_configuration_unknowns_remain_blocked(cfg):
+    for strategy in ('center','sighting'):
+        base,o=Options.load(f'config/competition-{strategy}.json')
+        assert o.vehicle_type==13 and o.servos['kirmizi'].channel==9 and o.servos['mavi'].channel==10
+        assert o.servos['mavi'].release_pwm is None
+        assert o.missing(base)
+    with pytest.raises(ValueError):
+        replace(Options(),servos={'mavi':Servo(9,1500),'kirmizi':Servo(9,1500)}).validate()
+
+
+def test_autonomous_landing_transition_not_false_abort(cfg,options,plan):
+    c=ready(cfg,options,plan)
+    c.step(100,telemetry(100),(),0,100,plan)
+    c.step(100.05,telemetry(100.05,mission_seq=3),(),1,100.05,plan)
+    c.done=set(COLORS); c.route.finished=True
+    d=c.step(100.1,telemetry(100.1,landed=4,mission_seq=4),(),2,100.1,plan)
+    assert d.state=='AUTO_FINISH'
+    d=c.step(100.15,telemetry(100.15,armed=False,landed=1,mission_seq=4),(),3,100.15,plan)
+    assert d.state=='DONE'
+
+
+def test_home_is_not_flight_path_but_nav_changes_are(cfg,options,plan):
+    new_home=replace(plan,items=(replace(plan.items[0],x=0,y=0,z=50.),)+plan.items[1:])
+    assert mission_digest(new_home)==mission_digest(plan)
+    new_path=replace(plan,items=plan.items[:2]+(replace(plan.items[2],x=410001000),)+plan.items[3:])
+    assert mission_digest(new_path)!=mission_digest(plan)
+
+
+def test_strategy_switch_does_not_reset_physical_payload(cfg,options,tmp_path):
+    from safak_gorev2.competition.runtime import CompetitionRuntime
+    a=CompetitionRuntime(replace(cfg,runtime_dir=str(tmp_path/'center')),'observe',options)
+    assert a.payload_ledger.reserve('kirmizi',{})
+    a.close()
+    b=CompetitionRuntime(replace(cfg,runtime_dir=str(tmp_path/'sighting')),'observe',replace(options,strategy='sighting'))
+    assert b.payload_status=={'kirmizi':'UNCERTAIN'}
+    b.close()
+
+
+def test_resume_only_approved_waypoint_while_owned(cfg,options,plan,tmp_path):
+    link,conn,_=link_ready(cfg,options,plan,tmp_path)
+    link.store.value=telemetry(100,mode='GUIDED');link.owned=True;link.claim_slot=6
+    link._perform(100,(Action('resume',(2,plan.fingerprint)),))
+    assert conn.mav.mission_set_current_send.call_args.args==(1,1,2)
+    link._perform(100,(Action('resume',(4,plan.fingerprint)),))
+    link._perform(100,(Action('resume',(2,'wrong')),))
+    link.store.pilot_override=True
+    link._perform(100,(Action('resume',(2,plan.fingerprint)),))
+    assert conn.mav.mission_set_current_send.call_count==1
+
+
+def test_sighting_configuration_needs_no_calibration():
+    cfg,o=Options.load('config/competition-sighting.json')
+    assert cfg.camera.calibration_file is None
+    assert 'kamera kalibrasyonu' not in o.missing(cfg)
+    cfg.verify_model()
+
+
+def test_observe_runtime_runs_both_colors_without_commands(cfg,options,tmp_path):
+    import time
+    from safak_gorev2.competition.runtime import CompetitionRuntime
+    cfg=replace(cfg,runtime_dir=str(tmp_path/'sighting'))
+    rt=CompetitionRuntime(cfg,'observe',options)
+    rt.start(connect=False)
+    try:
+        now=time.monotonic()
+        image=np.zeros((720,1280,3),np.uint8)
+        frame=Frame(1,now,now,image,(Detection('mavi_hedef',.9,(.1,.1,.3,.3)),
+                                   Detection('kirmizi_hedef',.9,(.5,.5,.7,.7))))
+        rt.mailbox.put(frame)
+        until=time.monotonic()+1
+        while time.monotonic()<until and (len(rt.candidates)!=2 or rt.state.jpeg is None): time.sleep(.01)
+        assert {x.color for x in rt.candidates}==set(COLORS)
+        assert rt.state.jpeg is not None and rt.state.decision.state=='OBSERVING'
+        assert not rt.state.decision.actions and not rt.payload_ledger.statuses()
+        assert rt.state.pipeline_error is None
+    finally: rt.close()
+
+
+def test_delayed_ack_and_wrong_component_not_success(cfg,options,plan,tmp_path,monkeypatch):
+    options=replace(options,actuator='servo',servos={'kirmizi':Servo(9,1500,True),'mavi':Servo(10,1500,True)})
+    link,conn,ledger=link_ready(cfg,options,plan,tmp_path)
+    for ch in (9,10):
+        link.servo_params.update({f'SERVO{ch}_FUNCTION':0,f'SERVO{ch}_MIN':1000,f'SERVO{ch}_MAX':2000})
+    monkeypatch.setattr('safak_gorev2.competition.link.time.monotonic',lambda:100.)
+    link._perform(100,(Action('payload',('kirmizi','mavi',1,100.,'AUTO')),))
+    wrong=source(mav.MAVLink_command_ack_message(183,0,0,0,245,191));wrong._header.srcComponent=42
+    link.ingest(wrong,100.1)
+    assert not link.pending['ack']
+    link.ingest(source(mav.MAVLink_command_ack_message(183,0,0,0,245,191)),103.)
+    assert link.snapshot_status()['kirmizi']=='UNCERTAIN'
+    assert link.pending is None and ledger.statuses()['kirmizi']=='UNCERTAIN'
+
+
+def test_arducopter_land_wire_parameter_is_supported(cfg,options,plan,tmp_path):
+    link,_,_=link_ready(cfg,options,plan,tmp_path)
+    item=source(mav.MAVLink_mission_item_int_message(245,191,4,3,21,0,1,0,0,0,1,410000000,290000000,0))
+    link.ingest(item,100)
+    assert link.failure is None
+    item.param1=5
+    link.ingest(item,100.1)
+    assert link.failure is not None

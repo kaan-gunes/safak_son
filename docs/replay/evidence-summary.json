@@ -1,0 +1,17 @@
+{
+  "verified_output_files": 327,
+  "verified_original_files": 168,
+  "frames": 81,
+  "run_manifest_sha256": "173d91b0508790563e3a367f08c2312c16b67b4fc0ca2bd607ac7f9266b63c9d",
+  "summary_sha256": "a89e842268574950f773a144808677e6f7c453b0eaa115bb72c2dd3a498d64c5",
+  "recorded_equal_frames": 81,
+  "comparison": {
+    "frames": 81,
+    "equal_frames": 81,
+    "max_abs_error": 8.609559798422595e-08,
+    "reference_tensor_equal_frames": 81,
+    "packed_nms_equal_frames": 81
+  },
+  "source_model_sha256": "b43dfac55acae45ce5db26301b6b7e9d63dc9be64e77a2f5069566068db45291",
+  "live_backend_unchanged": true
+}
