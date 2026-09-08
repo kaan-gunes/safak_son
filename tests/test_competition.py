@@ -31,7 +31,7 @@ def plan(mission):
 
 @pytest.fixture
 def options(plan):
-    return Options(strategy='sighting', vehicle_type=13, sortie_id='test-flight',
+    return Options(strategy='quick', vehicle_type=13, sortie_id='test-flight',
         mission_fingerprint=mission_digest(plan), search_start_seq=2,search_end_seq=2,route_reviewed=True,
         entry_gates=(((40.999,29.),(41.001,29.)),),
         finish_gate=((40.999,29.),(41.001,29.)),
@@ -69,7 +69,10 @@ def link_ready(cfg,options,plan,tmp_path):
 
 def test_legacy_files_unchanged():
     manifest=json.loads(Path('docs/competition/legacy-sha256.json').read_text())
-    assert all(hashlib.sha256(Path(p).read_bytes()).hexdigest()==digest for p,digest in manifest.items())
+    moved=json.loads(Path('archive/legacy-options/preserved-paths.json').read_text())
+    # Finder metadata'sı Linux'a dağıtılmaz; uygulama/profil kaynaklarını denetle.
+    assert all(hashlib.sha256(Path(moved.get(p,p)).read_bytes()).hexdigest()==digest
+               for p,digest in manifest.items() if Path(p).name != '.DS_Store')
 
 
 @pytest.mark.parametrize('order',[('mavi','kirmizi'),('kirmizi','mavi')])
@@ -77,12 +80,16 @@ def test_quick_two_colors_correct_payload_once(cfg,options,plan,order):
     c=ready(cfg,options,plan)
     statuses={}
     releases=[]
-    for i in range(30):
+    mode='AUTO'
+    for i in range(140):
         now=100+i*.05
         color=order[0] if not statuses else order[1]
-        d=c.step(now,telemetry(now),(candidate(i,now,color),),i,now,plan,release_status=statuses)
+        d=c.step(now,telemetry(now,mode=mode),(candidate(i,now,color),),i,now,plan,release_status=statuses)
         for a in d.actions:
+            if a.kind=='mode': mode=a.values[0]
+            assert a.kind!='velocity'
             if a.kind=='payload':
+                assert mode=='GUIDED' and a.values[-1]=='GUIDED'
                 releases.append(a.values[:2]); statuses[a.values[0]]='SIMULATED'
     assert releases==[('kirmizi' if color=='mavi' else 'mavi',color) for color in order]
     assert c.done==set(COLORS)
@@ -133,9 +140,12 @@ def test_no_midair_restart_and_pilot_latch(cfg,options,plan):
 
 def test_quick_ack_timeout_never_retries(cfg,options,plan):
     c=ready(cfg,options,plan)
-    for i in range(60):
+    mode='AUTO'
+    for i in range(100):
         now=100+i*.05
-        d=c.step(now,telemetry(now),(candidate(i,now),),i,now,plan)
+        d=c.step(now,telemetry(now,mode=mode),(candidate(i,now),),i,now,plan)
+        for a in d.actions:
+            if a.kind=='mode': mode=a.values[0]
     assert c.state=='ABORTED'
     assert c.requested=={'mavi'}
 
@@ -165,9 +175,11 @@ def test_metric_full_cycle_resume_then_other_color(cfg,options,plan):
 def test_target_loss_during_center_never_releases(cfg,options,plan):
     c=ready(cfg,replace(options,strategy='center'),plan)
     mode='AUTO'
+    centering_started = False
     for i in range(100):
         now=100+i*.05
-        xs=(candidate(i,now,metric=True),) if mode=='AUTO' else ()
+        centering_started = centering_started or c.state == 'INTERCEPT'
+        xs=() if centering_started else (candidate(i,now,metric=True),)
         d=c.step(now,telemetry(now,mode=mode),xs,i,now,plan)
         for a in d.actions:
             assert a.kind!='payload'
@@ -220,10 +232,11 @@ def test_hex_identity(cfg,options,plan,tmp_path):
 def test_real_servo_exact_channel_ack_and_output(cfg,options,plan,tmp_path,monkeypatch):
     options=replace(options,actuator='servo',servos={'kirmizi':Servo(9,1500,True),'mavi':Servo(10,1500,True)})
     link,conn,ledger=link_ready(cfg,options,plan,tmp_path)
+    link.store.value=telemetry(100.,mode='GUIDED');link.owned=True;link.claim_slot=6
     for ch in (9,10):
         link.servo_params.update({f'SERVO{ch}_FUNCTION':0,f'SERVO{ch}_MIN':1000,f'SERVO{ch}_MAX':2000})
     monkeypatch.setattr('safak_gorev2.competition.link.time.monotonic',lambda:100.)
-    a=Action('payload',('kirmizi','mavi',7,100.,'AUTO'))
+    a=Action('payload',('kirmizi','mavi',7,100.,'GUIDED'))
     link._perform(100,(a,))
     args=conn.mav.command_long_send.call_args.args
     assert args[2:6]==(183,0,9,1500)
@@ -242,16 +255,17 @@ def test_real_servo_exact_channel_ack_and_output(cfg,options,plan,tmp_path,monke
 def test_servo_refuses_unsafe_or_unverified(cfg,options,plan,tmp_path,bad,monkeypatch):
     options=replace(options,actuator='servo',servos={'kirmizi':Servo(9,1500,True),'mavi':Servo(10,1500,True)})
     link,conn,ledger=link_ready(cfg,options,plan,tmp_path)
+    link.store.value=telemetry(100.,mode='GUIDED');link.owned=True;link.claim_slot=6
     for ch in (9,10):
         link.servo_params.update({f'SERVO{ch}_FUNCTION':0,f'SERVO{ch}_MIN':1000,f'SERVO{ch}_MAX':2000})
     if bad=='observe': link.allow_control=False
     if bad=='pilot': link.store.pilot_override=True
-    if bad=='disarm': link.store.value=telemetry(100,armed=False)
+    if bad=='disarm': link.store.value=telemetry(100,mode='GUIDED',armed=False)
     if bad=='motor': link.servo_params['SERVO9_FUNCTION']=33
     if bad=='no_gate': link.route_authorized=False
-    if bad=='outside': link.store.value=telemetry(100,lat=42.)
+    if bad=='outside': link.store.value=telemetry(100,mode='GUIDED',lat=42.)
     monkeypatch.setattr('safak_gorev2.competition.link.time.monotonic',lambda:100.)
-    link._perform(100,(Action('payload',('kirmizi','kirmizi' if bad=='wrong_payload' else 'mavi',7,99. if bad=='stale' else 100.,'AUTO')),))
+    link._perform(100,(Action('payload',('kirmizi','kirmizi' if bad=='wrong_payload' else 'mavi',7,99. if bad=='stale' else 100.,'GUIDED')),))
     conn.mav.command_long_send.assert_not_called()
 
 
@@ -267,13 +281,13 @@ def test_vision_both_colors_and_one_meter_red(cfg):
     candidates,_=vision.detect(frame,PoseSample(100,0,0,0,0,0,-5.05),'center')
     assert {x.color for x in candidates}==set(COLORS)
     assert all(x.metric.camera_height_m==pytest.approx(5.,abs=.1) for x in candidates)
-    candidates,_=DualVision(cfg).detect(frame,None,'sighting')
+    candidates,_=DualVision(cfg).detect(frame,None,'quick')
     assert len(candidates)==2 and all(x.metric is None for x in candidates)
 
 
 def test_configuration_unknowns_remain_blocked(cfg):
-    for strategy in ('center','sighting'):
-        base,o=Options.load(f'config/competition-{strategy}.json')
+    for task in ('ana','hizli'):
+        base,o=Options.load(f'config/{task}-gorev.json')
         assert o.vehicle_type==13 and o.servos['kirmizi'].channel==9 and o.servos['mavi'].channel==10
         assert o.servos['mavi'].release_pwm is None
         assert o.missing(base)
@@ -304,7 +318,7 @@ def test_strategy_switch_does_not_reset_physical_payload(cfg,options,tmp_path):
     a=CompetitionRuntime(replace(cfg,runtime_dir=str(tmp_path/'center')),'observe',options)
     assert a.payload_ledger.reserve('kirmizi',{})
     a.close()
-    b=CompetitionRuntime(replace(cfg,runtime_dir=str(tmp_path/'sighting')),'observe',replace(options,strategy='sighting'))
+    b=CompetitionRuntime(replace(cfg,runtime_dir=str(tmp_path/'quick')),'observe',replace(options,strategy='quick'))
     assert b.payload_status=={'kirmizi':'UNCERTAIN'}
     b.close()
 
@@ -321,8 +335,8 @@ def test_resume_only_approved_waypoint_while_owned(cfg,options,plan,tmp_path):
     assert conn.mav.mission_set_current_send.call_count==1
 
 
-def test_sighting_configuration_needs_no_calibration():
-    cfg,o=Options.load('config/competition-sighting.json')
+def test_quick_configuration_needs_no_calibration():
+    cfg,o=Options.load('config/hizli-gorev.json')
     assert cfg.camera.calibration_file is None
     assert 'kamera kalibrasyonu' not in o.missing(cfg)
     cfg.verify_model()
@@ -331,7 +345,7 @@ def test_sighting_configuration_needs_no_calibration():
 def test_observe_runtime_runs_both_colors_without_commands(cfg,options,tmp_path):
     import time
     from safak_gorev2.competition.runtime import CompetitionRuntime
-    cfg=replace(cfg,runtime_dir=str(tmp_path/'sighting'))
+    cfg=replace(cfg,runtime_dir=str(tmp_path/'quick'))
     rt=CompetitionRuntime(cfg,'observe',options)
     rt.start(connect=False)
     try:
@@ -352,10 +366,11 @@ def test_observe_runtime_runs_both_colors_without_commands(cfg,options,tmp_path)
 def test_delayed_ack_and_wrong_component_not_success(cfg,options,plan,tmp_path,monkeypatch):
     options=replace(options,actuator='servo',servos={'kirmizi':Servo(9,1500,True),'mavi':Servo(10,1500,True)})
     link,conn,ledger=link_ready(cfg,options,plan,tmp_path)
+    link.store.value=telemetry(100.,mode='GUIDED');link.owned=True;link.claim_slot=6
     for ch in (9,10):
         link.servo_params.update({f'SERVO{ch}_FUNCTION':0,f'SERVO{ch}_MIN':1000,f'SERVO{ch}_MAX':2000})
     monkeypatch.setattr('safak_gorev2.competition.link.time.monotonic',lambda:100.)
-    link._perform(100,(Action('payload',('kirmizi','mavi',1,100.,'AUTO')),))
+    link._perform(100,(Action('payload',('kirmizi','mavi',1,100.,'GUIDED')),))
     wrong=source(mav.MAVLink_command_ack_message(183,0,0,0,245,191));wrong._header.srcComponent=42
     link.ingest(wrong,100.1)
     assert not link.pending['ack']

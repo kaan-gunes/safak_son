@@ -1,0 +1,84 @@
+# Önce bu dosyayı oku — yeni merkezleme akışı
+
+Bu uygulama **Python** ile yazıldı. Uçuş kontrolcüsünde **ArduCopter** çalışıyor. Pi hedefi değerlendiriyor; motorları doğrudan Pi sürmüyor.
+
+Kullanılacak giriş: `python -m safak_gorev2.competition.main`. Seçilecek profil: `config/competition-center.json`. Eski `safak_gorev2.main` farklı, korunmuş quad uygulamasıdır. `competition-sighting.json` ise merkezlemeden bırakır; aşağıdaki akış için seçilmez.
+
+## Araç ne yapacak?
+
+```mermaid
+flowchart TD
+    A[AUTO rotasında ara] --> B{Aynı renkli AI adayı\nen az 0,10 saniye görüldü mü?}
+    B -- Hayır --> A
+    B -- Evet --> C[GUIDED iste, sıfır hız gönder]
+    C --> D[Telemetriden yavaşladığını doğrula]
+    D --> E{Duran araçta\nAI + köşe + geometri geçerli mi?}
+    E -- 3 saniyede doğrulanmadı --> F[Yükü koru, kesilen waypoint ile AUTO'ya dön]
+    F --> A
+    E -- Evet --> G[Hedefe merkezlen]
+    G --> H[Kararlı merkezde alçal]
+    H --> I[Kararlı bırakma koşullarında tek yük komutu]
+    I --> J[Tarama irtifasına çık, aynı waypoint ile AUTO'ya dön]
+    J --> A
+```
+
+GUIDED yalnız hedefe gitme modu değildir; sıfır hızla durmak için de kullanılır. [ArduPilot GUIDED komutları](https://ardupilot.org/dev/docs/copter-commands-in-guided-mode.html). Durduktan sonra tekrar GUIDED'e geçiş yok, aynı modda merkezleme başlar. Pilot LOITER'a geçerse uygulama kalıcı olarak kontrolü bırakır; otomatik tekrar devralmaz. Tarama bittiğinde mevcut bitiş/LAND rotası devam eder; diyagramdaki arama döngüsü görev sonunu uzatmaz.
+
+**0,10 saniye fiziksel durma süresi değildir.** Durma isteği için en az 3 bağımsız kare ve ilk/son kare arasında en az 0,10 s gerekir; 30 FPS'de bu genellikle 4 karedir. Mod cevabı ve aracın frenlemesi ek süre/mesafe alır. İlk AI kutusu yanlış olabilir; duruş kararında PnP gerekmez, merkezleme kararında gerekir. “Doğrulandı” görsel kontroller geçti demektir; kusursuz sınıflandırma garantisi değildir.
+
+## Tek bakışta ayarlar
+
+| Aşama | Yeni merkezleme profilindeki değer |
+|---|---|
+| İlk aday | Skor ≥0,40; en az3 kare / 0,10 s; ardışık kutular aynı bölgede |
+| Duruş | Yatay hız ≤0,20 m/s, düşey hız/eğim sınırları içinde en az0,30 s |
+| Duruş zaman aşımı | 5 s; duramazsa LOITER devriyle görev iptal |
+| Durduktan sonraki doğrulama | Taze AI + köşe/PnP, en az6 kare / 0,50 s |
+| Doğrulanmayan hedef | 3 s sonunda aynı waypoint ile AUTO; aynı renge5 s yeniden durma yok |
+| Merkez kararlılığı / bırakma kararlılığı | 1,5 s / 3 s; mevcut merkezleme sınırları korunuyor |
+| Kamera hedef yüksekliği | 9 m; bu değer güncel hex ölçümü değildir |
+
+Kamera/telemetri kesilmesi “yanlış hedef” sayılıp AUTO'ya dönülmez. Pilot müdahalesi, bağlantı sorunu veya kontrol döngüsü duraklamasında görev bırakılır. Merkezleme başladıktan sonraki hedef kaybında mevcut dur/LOITER davranışı korunur. Sadece dururken görsel doğrulama başarısızsa rota devam eder.
+
+## Hangi kütüphane ne yapıyor?
+
+| Bileşen | Kullanımı |
+|---|---|
+| Picamera2 / libcamera | Kamera görüntüsü, pozlama ve odak |
+| HailoRT + TAPPAS / GStreamer (`gi`) | YOLO HEF modelini Hailo üzerinde çalıştırma |
+| OpenCV (`cv2`) | Renk/köşe kontrolleri, PnP, görüntü çizimi |
+| NumPy | Koordinat dönüşümleri ve sayısal hesap |
+| pymavlink | Pixhawk telemetrisi, mod/hız ve servo komutları |
+| Flask + Waitress | Salt okunur yer istasyonu paneli |
+| SQLite (`sqlite3`, Python içinde) | Her yük için tek seferlik bırakma kaydı |
+| pytest | Otomatik testler; uçuş sırasında kullanılmaz |
+
+**DroneKit kullanılmıyor. MOSSE bu uçuş akışına bağlı değil.** Durup doğrulama için yeni tracker bağımlılığı eklenmedi. Pi'deki gerçek paket sürümleri ayrıca okunur; Mac test ortamı Pi'nin sürüm kanıtı değildir.
+
+## Yazılımcı nereden okumalı?
+
+Sırayla yalnız bu dosyalar yeterli:
+
+1. `safak_gorev2/competition/main.py`: programın açılması ve panel.
+2. `safak_gorev2/competition/controller.py`: `begin_stop` → `stop_and_verify` → `INTERCEPT` → dönüş. Uçuş kararı burada.
+3. `safak_gorev2/competition/vision.py`: ham AI adayı ile köşe/PnP sonucu ayrı tutulur. Geometri reddi erken durma adayını silmez.
+4. `safak_gorev2/competition/link.py`: kararları MAVLink'e gönderir, mod geçişinde sıfır hız zaman aşımını ve servo doğrulamasını yönetir.
+5. `tests/test_pause_verify.py`: yeni davranışın somut örnekleri.
+
+`runtime.py` görüntü/karar/kayıt döngülerini bağlar. `route.py` onaylanan rota bölümünü, `payload.py` tek sefer bırakmayı korur. Merkezleme hesabı değiştirilmeyen `safak_gorev2/controller.py` ve `geometry.py` üzerinden kullanılır. Eski test/kalibrasyon/analiz klasörlerini okuyarak başlamak gerekmiyor.
+
+## Çalıştırma durumu
+
+Dosya kontrolü araç bağlantısı açmaz:
+
+```bash
+python -m safak_gorev2.competition.main --config config/competition-center.json --check
+```
+
+Gerçek Hailo ortamında yalnız gözlem:
+
+```bash
+python -m safak_gorev2.competition.main --config config/competition-center.json --mode observe
+```
+
+Bu revizyon yerelde yapıldı, Pi'ye dağıtılmadı. **Mevcut ortak profil hâlâ eski kamera adayına işaret ediyor; IMX708'in güncel ayarı/kalibrasyon uyumu, hex montaj ofseti, servo PWM ve saha rotası tamamlanmadan uçuş profili hazır değildir.** Son bildirilen Hailo aygıt arızası da bu kod değişikliğiyle düzelmez. Uçuşa başlama veya servo sürme bu revizyonda yapılmadı. Testlerin gerçek sonuçları ve sınırları `TESTLER.md` içinde.

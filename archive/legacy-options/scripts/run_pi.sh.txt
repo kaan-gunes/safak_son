@@ -2,7 +2,7 @@
 # Mevcut Hailo ortamını kullanır; ortamı ve Pixhawk parametrelerini değiştirmez.
 set -eo pipefail
 if [ "$#" -lt 1 ]; then
-  echo "Kullanım: bash scripts/run_pi.sh /tam/yol/setup_env.sh --task ana|hizli [--mode observe|flight]" >&2
+  echo "Kullanım: bash scripts/run_pi.sh /tam/yol/setup_env.sh [--mode observe|flight] [--config config/flight.local.json]" >&2
   exit 2
 fi
 SAFAK_PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,4 +21,4 @@ if [ -f "$SAFAK_ENV_DIR/.env" ]; then
 fi
 cd "$SAFAK_PROJECT_DIR"
 export PYTHONPATH="$SAFAK_PROJECT_DIR/runtime/python:$SAFAK_PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}"
-exec python -m safak_gorev2.competition.main "$@"
+exec python -m safak_gorev2.main "$@"

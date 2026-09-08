@@ -1,0 +1,13 @@
+{
+  "safak_gorev2/model_compare.py": "archive/legacy-options/protected/safak_gorev2/model_compare.py.txt",
+  "safak_gorev2/replay.py": "archive/legacy-options/protected/safak_gorev2/replay.py.txt",
+  "safak_gorev2/calibrate.py": "archive/legacy-options/protected/safak_gorev2/calibrate.py.txt",
+  "safak_gorev2/main.py": "archive/legacy-options/safak_gorev2/main.py.txt",
+  "safak_gorev2/doctor.py": "archive/legacy-options/protected/safak_gorev2/doctor.py.txt",
+  "config/flight-imx708.json": "archive/legacy-options/config/flight-imx708.json.txt",
+  "config/observe-imx708.json": "archive/legacy-options/config/observe-imx708.json.txt",
+  "config/observe-field.json": "archive/legacy-options/config/observe-field.json.txt",
+  "config/flight-imx219-new-model.json": "archive/legacy-options/config/flight-imx219-new-model.json.txt",
+  "config/flight.field-candidate.json": "archive/legacy-options/config/flight.field-candidate.json.txt",
+  "config/quad.json": "archive/legacy-options/config/quad.json.txt"
+}

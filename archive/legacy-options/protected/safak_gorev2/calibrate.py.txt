@@ -151,7 +151,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     take = commands.add_parser("capture")
-    take.add_argument("--config", default="config/analysis-tools.json")
+    take.add_argument("--config", default="config/quad.json")
     take.add_argument("--folder", required=True, type=Path)
     take.add_argument("--count", type=int, default=35)
     take.add_argument("--interval", type=float, default=1.5)

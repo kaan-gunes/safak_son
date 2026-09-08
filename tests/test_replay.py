@@ -92,7 +92,7 @@ def test_replay_import_does_not_load_flight_or_hardware():
 def field_frames():
     src=ROOT/'artifacts/field/flight-01'
     if not src.is_dir():pytest.skip('Gerçek uçuş kaydı bu checkout içinde yok')
-    cfg=Config.load(ROOT/'config/quad.json')
+    cfg=Config.load(ROOT/'config/analysis-tools.json')
     return load_dataset(src,src/'sha256-manifest.json',cfg.camera)[0],cfg.camera
 
 

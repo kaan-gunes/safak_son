@@ -24,6 +24,7 @@ class Servo:
 class Options:
     strategy: str = 'center'
     actuator: str = 'simulated'
+    camera_mount_yaw_deg: int = 0  # Yere bakan kamera: görüntü üstü burun=0, arka=180.
     vehicle_type: int | None = None  # MAV_TYPE: quad=2, hexa=13; fiziksel seçim gerekli.
     sortie_id: str | None = None  # Yeniden başlatmada AYNI kimlik; yeniden yükleyince yeni kimlik.
     mission_fingerprint: str | None = None
@@ -38,6 +39,13 @@ class Options:
     quick_frames: int = 3
     quick_hold_s: float = 0.10
     quick_iou: float = 0.25
+    stop_speed_mps: float = 0.20
+    stop_hold_s: float = 0.30
+    stop_timeout_s: float = 5.0
+    verify_timeout_s: float = 3.0
+    quick_verify_s: float = 0.10
+    quick_verify_frames: int = 3
+    retry_delay_s: float = 5.0
     release_ack_timeout_s: float = 2.0
     servos: dict = field(default_factory=lambda: {c: Servo() for c in COLORS})
 
@@ -54,22 +62,31 @@ class Options:
             alternate = Path(base.hef_file).with_name('best.hef')
             if alternate.is_file() and hashlib.sha256(alternate.read_bytes()).hexdigest() == base.hef_sha256:
                 base = replace(base, hef_file=str(alternate))
-        if options.strategy == "sighting":
+        if options.strategy == "quick":
             base = replace(base, camera=replace(base.camera, calibration_file=None))
         base = replace(base, runtime_dir=str(path.parent.parent / 'runtime' / 'competition' / options.strategy))
         return base, options
 
     def validate(self):
-        if self.strategy not in ('center', 'sighting') or self.actuator not in ('simulated', 'servo'):
+        if type(self.camera_mount_yaw_deg) is not int or self.camera_mount_yaw_deg not in (0, 180):
+            raise ValueError('Yere bakan kamera montajı 0 veya 180 derece olmalı')
+        if self.strategy not in ('center', 'quick') or self.actuator not in ('simulated', 'servo'):
             raise ValueError('Strateji/aktüatör seçimi geçersiz')
         if type(self.quick_frames) is not int or self.quick_frames < 1:
             raise ValueError('quick_frames pozitif tam sayı olmalı')
-        for name in ('quick_hold_s', 'release_ack_timeout_s', 'quick_iou'):
+        if type(self.quick_verify_frames) is not int or self.quick_verify_frames < 1:
+            raise ValueError('quick_verify_frames pozitif tam sayı olmalı')
+        for name in ('quick_hold_s', 'release_ack_timeout_s', 'quick_iou', 'stop_speed_mps',
+                     'stop_hold_s', 'stop_timeout_s', 'verify_timeout_s', 'retry_delay_s', 'quick_verify_s'):
             value = getattr(self, name)
             if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
                 raise ValueError(f'{name} pozitif ve sonlu olmalı')
         if self.quick_iou > 1 or set(self.servos) != set(COLORS):
             raise ValueError('İki yük için ayrı servo tanımı gerekli')
+        if self.stop_timeout_s <= self.stop_hold_s:
+            raise ValueError('Durma zaman aşımı kararlılık süresinden uzun olmalı')
+        if self.verify_timeout_s <= self.quick_verify_s:
+            raise ValueError('Doğrulama zaman aşımı kısa doğrulama süresinden uzun olmalı')
         if self.vehicle_type not in (None, 2, 13):
             raise ValueError('Yalnız quad veya hexacopter desteklenir')
         for seq in (self.search_start_seq, self.search_end_seq):
@@ -109,6 +126,8 @@ class Options:
         if base.mission.takeoff_mode != 'auto':
             result.append('yarışma profilinde AUTO TAKEOFF')
         if self.strategy == 'center':
+            if self.verify_timeout_s <= base.control.acquire_s:
+                result.append('verify_timeout_s ilk hedef doğrulama süresinden uzun olmalı')
             if not base.camera.calibration_file or not Path(base.camera.calibration_file).is_file():
                 result.append('kamera kalibrasyonu')
             if base.camera.offset_body_m is None:

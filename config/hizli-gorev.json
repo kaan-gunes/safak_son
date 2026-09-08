@@ -1,0 +1,38 @@
+{
+  "base_config": "hizli-base.json",
+  "strategy": "quick",
+  "camera_mount_yaw_deg": 180,
+  "actuator": "simulated",
+  "vehicle_type": 13,
+  "sortie_id": null,
+  "mission_fingerprint": null,
+  "search_start_seq": null,
+  "search_end_seq": null,
+  "route_reviewed": false,
+  "entry_gates": [],
+  "finish_gate": [],
+  "flight_polygon": [],
+  "quick_frames": 3,
+  "quick_hold_s": 0.1,
+  "quick_iou": 0.25,
+  "stop_speed_mps": 0.2,
+  "stop_hold_s": 0.3,
+  "stop_timeout_s": 5.0,
+  "verify_timeout_s": 3.0,
+  "retry_delay_s": 5.0,
+  "release_ack_timeout_s": 2.0,
+  "servos": {
+    "kirmizi": {
+      "channel": 9,
+      "release_pwm": null,
+      "bench_verified": false
+    },
+    "mavi": {
+      "channel": 10,
+      "release_pwm": null,
+      "bench_verified": false
+    }
+  },
+  "quick_verify_s": 0.1,
+  "quick_verify_frames": 3
+}

@@ -11,7 +11,6 @@ from .route import RouteProgress, inside, mission_digest
 class DualController:
     """AUTO rota + iki bağımsız yük. Eski Controller yalnız merkezleme alt yordamıdır."""
     def __init__(self, cfg, options):
-        options.validate()
         self.cfg, self.options = cfg, options
         self.route = RouteProgress(options)
         self.state, self.reason = 'WAIT_AUTO', 'Yerde başlatma ve AUTO kalkış bekleniyor'
@@ -30,12 +29,6 @@ class DualController:
         self.boxes = {}
         self.last_frame = None
         self.climb_hold = ContinuousHold(cfg.control.telemetry_timeout_s)
-        self.stop_hold = ContinuousHold(cfg.control.telemetry_timeout_s)
-        self.verify_hold = ContinuousHold(cfg.control.max_lock_frame_gap_s)
-        self.selected_box = None
-        self.verify_xy = None
-        self.verify_frame = None
-        self.retry_until = {c: -math.inf for c in COLORS}
 
     def decision(self, *actions, reason=None):
         return Decision(self.state, reason or self.reason, tuple(actions))
@@ -77,7 +70,7 @@ class DualController:
             return self.decision(reason='DISARM görüldü; AUTO kalkış bekleniyor')
         if self.started:
             expected = {'AUTO'} if self.child is None else {'GUIDED'}
-            if self.state == 'REQUEST_STOP':
+            if self.state == 'INTERCEPT' and self.child.state in ('WAIT_AUTO', 'SEARCHING', 'REQUEST_GUIDED'):
                 expected.add('AUTO')
             if self.state == 'RESUME_AUTO':
                 expected.add('AUTO')
@@ -124,9 +117,10 @@ class DualController:
             if status in ('ACK_ACCEPTED', 'SIMULATED'):
                 self.done.add(self.selected)
                 self.reset_holds()
-                if self.options.strategy == 'quick':
-                    self.transition('RESUME_SELECT', now, 'Yük komutu kabul edildi; irtifa değiştirmeden rotaya dönülüyor')
-                    return self.decision(Action('stop'), Action('resume', (self.resume_seq, mission.fingerprint)))
+                if self.child is None:
+                    self.selected = None
+                    self.transition('SEARCHING', now, 'Diğer renk aranıyor; AUTO rota devam ediyor')
+                    return self.decision()
                 self.climb_hold.reset()
                 self.transition('CLIMB', now, 'Yük komutu kabul edildi; tarama irtifasına dönülüyor')
                 return self.decision(Action('stop'))
@@ -153,16 +147,17 @@ class DualController:
                 if t.mission_seq != self.resume_seq:
                     return self.abort(now, t, 'AUTO yanlış waypoint sırasında başladı', pilot=True)
                 self.child, self.selected = None, None
-                self.reset_holds()
                 self.transition('SEARCHING', now, 'Diğer hedef veya dönüş rotası devam ediyor')
                 return self.decision(Action('revoke'))
             return self.decision(Action('stop'))
 
-        if self.state in ('REQUEST_STOP', 'STOPPING', 'VERIFYING'):
-            return self.stop_and_verify(now, t, candidates, frame_id, frame_at, mission)
-
         if self.state == 'INTERCEPT':
             metrics = tuple(x.metric for x in candidates if x.color == self.selected and x.metric is not None)
+            if (self.child.state in ('WAIT_AUTO', 'SEARCHING') and not metrics
+                    and now-self.entered > self.cfg.control.lost_target_abort_s):
+                self.child, self.selected = None, None
+                self.transition('SEARCHING', now, 'Aday kayboldu; iki renk yeniden aranıyor')
+                return self.decision()
             d = self.child.step(now, t, metrics, frame_id, frame_at, mission)
             if d.state in ('ABORTED','PILOT_CONTROL'):
                 self.transition(d.state, now, d.reason)
@@ -183,127 +178,42 @@ class DualController:
         if not 0 <= now-frame_at <= self.cfg.control.frame_timeout_s:
             self.reset_holds()
             return self.decision(reason='Güncel görüntü yok; bırakma yok')
-        if frame_id is None or (self.last_frame is not None and frame_id <= self.last_frame):
+        if frame_id is None or frame_id == self.last_frame:
             return self.decision()
         self.last_frame = frame_id
-        eligible = self.fresh_candidates(candidates, frame_id, frame_at)
-        eligible = [x for x in eligible if x.color not in self.requested and now >= self.retry_until[x.color]]
-        ready = []
-        for color in COLORS:
-            choices = [x for x in eligible if x.color == color]
-            choice = max(choices, key=lambda x:x.confidence) if choices else None
-            h = self.holds[color]
-            if choice is None:
-                h.reset()
-                self.boxes.pop(color, None)
-                continue
-            if color in self.boxes and bbox_iou(choice.bbox, self.boxes[color]) < self.options.quick_iou:
-                h.reset()
-            self.boxes[color] = choice.bbox
-            h.update(frame_id, frame_at, True)
-            if h.count >= self.options.quick_frames and h.elapsed+1e-9 >= self.options.quick_hold_s:
-                ready.append(choice)
-        if ready:
-            choice = max(ready, key=lambda x:x.confidence)
-            return self.begin_stop(now, t, choice)
-        return self.decision(reason='Mavi/kırmızı aday aranıyor; ilk doğrulama '+str(self.options.quick_hold_s)+' s')
-
-    def fresh_candidates(self, candidates, frame_id, frame_at):
-        return [x for x in candidates if x.color in COLORS
+        eligible = [x for x in candidates if x.color in COLORS and x.color not in self.requested
                     and x.frame_id == frame_id and x.captured_at == frame_at
-                    and math.isfinite(x.confidence) and self.cfg.camera.confidence_min <= x.confidence <= 1
-                    and len(x.bbox) == 4 and all(math.isfinite(v) and 0 <= v <= 1 for v in x.bbox)
-                    and x.bbox[0] < x.bbox[2] and x.bbox[1] < x.bbox[3]]
-
-    def begin_stop(self, now, t, choice):
-        self.selected, self.selected_box = choice.color, choice.bbox
-        self.resume_seq, self.return_alt = t.mission_seq, t.relative_alt_m
-        self.child = Controller(self.cfg)
-        self.stop_hold.reset()
-        self.verify_hold.reset()
-        self.verify_xy, self.verify_frame = None, None
-        self.reset_holds()
-        self.transition('REQUEST_STOP', now, 'Aday görüldü; GUIDED ile durma isteniyor')
-        return self.decision(Action('claim', (t.rc_slot,)), Action('mode', ('GUIDED', 'AUTO')))
-
-    def stop_and_verify(self, now, t, candidates, frame_id, frame_at, mission):
-        """Önce sıfır hız, sonra duran araçta taze AI + köşe/PnP doğrulaması."""
-        if self.state == 'REQUEST_STOP':
-            if now-self.entered > self.cfg.control.mode_timeout_s:
-                return self.abort(now, t, 'GUIDED duruş geçişi doğrulanamadı')
-            if t.mode != 'GUIDED' or t.heartbeat_at <= self.entered:
-                return self.decision(Action('stop'))
-            self.transition('STOPPING', now, 'Frenleniyor; merkezleme ve alçalma kapalı')
-            return self.decision(Action('stop'))
-
-        fresh = frame_id is not None and 0 <= now-frame_at <= self.cfg.control.frame_timeout_s
-        choice = None
-        if fresh:
-            matches = [x for x in self.fresh_candidates(candidates, frame_id, frame_at)
-                       if x.color == self.selected and bbox_iou(x.bbox, self.selected_box) >= self.options.quick_iou]
-            choice = max(matches, key=lambda x:bbox_iou(x.bbox, self.selected_box)) if matches else None
-            if choice:
-                self.selected_box = choice.bbox
-        stopped = (t.horizontal_speed <= self.options.stop_speed_mps
-                   and abs(t.vd) <= self.cfg.control.release_vertical_speed_mps
-                   and t.tilt_deg <= self.cfg.control.release_tilt_deg)
-        if self.state == 'STOPPING':
-            if now-self.entered > self.options.stop_timeout_s:
-                return self.abort(now, t, 'Araç zamanında durmadı; kontrol LOITER ile bırakılıyor')
-            held = self.stop_hold.update(t.position_at, t.position_at, stopped)
-            if held+1e-9 >= self.options.stop_hold_s:
-                self.verify_frame = frame_id
-                self.transition('VERIFYING', now, 'Araç yavaşladı; '+('taze AI ile kısa hedef doğrulaması' if self.options.strategy == 'quick'
-                                else 'hedef AI, köşe ve geometriyle doğrulanıyor'))
-            return self.decision(Action('stop'))
-
-        if not fresh:
-            return self.abort(now, t, 'Doğrulamada kamera güncel değil; körlemesine rota devri yok')
-        if now-self.entered > self.options.verify_timeout_s:
-            self.retry_until[self.selected] = now+self.options.retry_delay_s
-            self.reset_holds()
-            self.transition('RESUME_SELECT', now, 'Hedef doğrulanamadı; yük korunarak kesilen waypoint seçiliyor')
-            return self.decision(Action('stop'), Action('resume', (self.resume_seq, mission.fingerprint)))
-        if not stopped:
-            self.verify_hold.reset()
-            return self.decision(Action('stop'), reason='Araç hâlâ hareketli; hedef doğrulaması sıfırlandı')
-        if (frame_at <= self.entered or (self.verify_frame is not None and frame_id <= self.verify_frame)):
-            return self.decision(Action('stop'))
-        self.verify_frame = frame_id
-        if self.options.strategy == 'quick':
-            if choice is None:
-                self.verify_hold.reset()
-                return self.decision(Action('stop'), reason='Durduktan sonra aynı renkli taze AI adayı bekleniyor')
-            held = self.verify_hold.update(frame_id, frame_at, True)
-            if (held+1e-9 >= self.options.quick_verify_s
-                    and self.verify_hold.count >= self.options.quick_verify_frames):
-                return self.request_release(now, frame_id, frame_at, 'GUIDED')
-            return self.decision(Action('stop'), reason=f'Kısa doğrulama: {held:.2f}/{self.options.quick_verify_s:.2f} s')
-        metric = choice.metric if choice else None
-        if (metric is None or metric.frame_id != frame_id or metric.captured_at != frame_at
-                or not all(math.isfinite(v) for v in (metric.north, metric.east, metric.ground_down,
-                           metric.camera_height_m, metric.confidence))):
-            self.verify_hold.reset()
-            return self.decision(Action('stop'), reason='Hedefte taze AI/köşe/geometri kanıtı yok; bekleniyor')
-        if self.verify_xy is not None and math.hypot(metric.north-self.verify_xy[0], metric.east-self.verify_xy[1]) > self.cfg.control.target_association_m:
-            self.verify_hold.reset()
-            return self.decision(Action('stop'), reason='Hedef konumu sıçradı; doğrulama kabul edilmedi')
-        self.verify_xy = (metric.north, metric.east)
-        held = self.verify_hold.update(frame_id, frame_at, True)
-        if held+1e-9 >= self.cfg.control.acquire_s and self.verify_hold.count >= self.cfg.control.acquire_frames:
-            # Eski merkezleme kodu korunur. Bu noktada duruş ve taze hedef ayrıca doğrulandı.
-            self.child.saw_disarmed = True
-            self.child.rc_slot = self.rc_slot
-            self.child.return_alt = self.return_alt
-            self.child.interaction_started = now
-            self.child.track_xy = self.verify_xy
-            self.child.last_valid_at = frame_at
-            self.child.last_frame_id = frame_id
-            self.child.target = metric
-            self.child._state('CENTERING', now, 'Dururken doğrulanan hedefe merkezleniyor')
-            self.transition('INTERCEPT', now, 'Hedef doğrulandı; merkezleme başlıyor')
-        return self.decision(Action('stop'), reason=self.reason if self.state == 'INTERCEPT' else
-                             f'Hedef doğrulanıyor: {held:.2f}/{self.cfg.control.acquire_s:.2f} s')
+                    and math.isfinite(x.confidence) and self.cfg.camera.confidence_min <= x.confidence <= 1]
+        if self.options.strategy == 'center':
+            eligible = [x for x in eligible if x.metric is not None]
+            if eligible:
+                choice = max(eligible, key=lambda x: x.confidence)
+                self.selected, self.resume_seq, self.return_alt = choice.color, t.mission_seq, t.relative_alt_m
+                self.child = Controller(self.cfg)
+                self.child.saw_disarmed = self.saw_disarmed
+                self.transition('INTERCEPT', now, self.selected+' hedef doğrulanıyor')
+                d = self.child.step(now, t, (choice.metric,), frame_id, frame_at, mission)
+                return d
+        else:
+            ready = []
+            for color in COLORS:
+                choices = [x for x in eligible if x.color == color]
+                choice = max(choices, key=lambda x:x.confidence) if choices else None
+                h = self.holds[color]
+                if choice is None:
+                    h.reset()
+                    self.boxes.pop(color, None)
+                    continue
+                if color in self.boxes and bbox_iou(choice.bbox, self.boxes[color]) < self.options.quick_iou:
+                    h.reset()
+                self.boxes[color] = choice.bbox
+                h.update(frame_id, frame_at, True)
+                if h.count >= self.options.quick_frames and h.elapsed+1e-9 >= self.options.quick_hold_s:
+                    ready.append(choice)
+            if ready:
+                self.selected = max(ready, key=lambda x:x.confidence).color
+                return self.request_release(now, frame_id, frame_at, 'AUTO')
+        return self.decision(reason='Mavi/kırmızı hedef aranıyor; tamamlanan renk yeniden bırakılmaz')
 
     def request_release(self, now, frame_id, frame_at, expected_mode):
         if self.selected in self.requested:

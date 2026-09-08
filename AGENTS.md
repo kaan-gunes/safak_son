@@ -1,5 +1,17 @@
 # ŞAFAK UAV — Proje bağlamı ve çalışma kuralları
 
+## 8 Eylül 07:00 — canlı Hailo güncellemesi
+
+Pi `172.20.10.2` aynı SSH kimliğiyle kontrol edildi. Hailo aygıtı/model çıkarımı çalışıyor; sürücü4.20.0 `find_vma` uyarısına resmî kaynakta bulunan iki satır mmap kilidi düzeltmesi uygulandı, çalışan kernel için DKMS yeniden kuruldu. Son40s gerçek kamera testi1174kare/~30FPS/hatasız/yeni kernel uyarısı0. Önceki PCIe kopmasının nedeni veya uzun vadeli çözümü kanıtlanmadı. Kamera/görev/panel kapalı; HailoRT servisi aktif. FC/MAVLink/servo komutu yok; mekanizma henüz takılı değil. Yeni montaj revizyonu hâlâ Pi'ye aktarılmadı. Ayrıntı `docs/HANDOFF.md`, `artifacts/pi/hailo-driver-fix-20260908/REPORT.md`. Kullanıcının yeni kalibrasyon ortamı/zamanı yok; saha rotası yarışma anında Mission Planner'dan girilecek, şimdi koordinat istemeyin.
+
+## 8 Eylül — güncel kamera montajı
+
+Kullanıcı doğruladı: lens yere bakıyor, görüntü üstü drone'un arkasında (180°); lens merkezi Pixhawk'tan 11 cm ileri, 5 cm aşağıda, sağ/sol sıfır. Ana/hızlı profillerde FRD `[0.11,0,0.05]` m ve `camera_mount_yaw_deg=180` yerelde işlendi. Eski geometri değişmeden ayrı `competition/geometry.py` uyarlaması kullanılıyor. 101 ilgili test geçti; yeni revizyon Pi'ye aktarılmadı. Montaj kullanıcı beyanı, fiziksel yön/mesafe doğrulaması değil. Ana IMX708 kalibrasyonu, servo PWM, saha/rota ve Hailo canlı kontrolü açık; ayrıntı `docs/HANDOFF.md` ve `docs/competition/EKSIKLER.md`. Aşağıdaki eski “hex ofseti bilinmiyor” kayıtları tarihli geçmiş oldu.
+
+## Son açık kullanıcı kararı — yalnız ana ve hızlı görev
+
+7 Eylül2026 son talep: “MOSSE'siz hızlı görevi yaz, diğer üç eski seçeneği kaldır.” Önceki yalnız mavi girişi koruma talebi bu açık kaldırma isteğiyle giriş/profiller açısından güncellendi. Günlük seçimler yalnız `--task ana` (`config/ana-gorev.json`, center) ve `--task hizli` (`config/hizli-gorev.json`, quick). Hızlı görev0,10s gör→GUIDED dur→duruştan sonra0,10s taze AI doğrula→merkezleme/alçalma olmadan bırak→aynı AUTO waypoint; MOSSE yok. Ana dur–doğrula/merkezleme korunuyor. Eski quad girişi donanım açmadan hata verir; eski saha/competition-center/competition-sighting profilleri arşivlendi, sighting stratejisi kaldırıldı. `archive/legacy-options/` özgün `.txt` kopyaları ve hashleri içerir. Ortak merkezleme/geometri yordamları silinmedi. `README.md`/`docs/competition/AKIS.md` güncel iki seçenek kılavuzudur; aşağıdaki eski başlatma komutlarını güncel sanmayın. Pi'ye aktarım yapılmadı; canlı donanım ve uçuş hazırlığı doğrulanmadı. En son testler ve açık işler HANDOFF.md/TESTLER.md içinde.
+
 Son güncelleme: 7 Eylül 2026.
 Bu dosya, kullanıcının açık isteğiyle yeni proje sohbetlerine bağlam aktarmak için oluşturuldu. Sohbetin birebir dökümü değildir; güncel kararları, kaynakları ve bilinmeyenleri korur. Dosyadaki tarihli bilgiler daha sonra doğrulanan bilgilerle güncellenmelidir.
 

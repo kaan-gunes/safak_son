@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "safak-gorev2"
 version = "0.1.0"
-description = "ŞAFAK UAV quad Görev 2 test yazılımı ve salt okunur yerel panel"
+description = "ŞAFAK UAV ana ve hızlı Görev 2 uygulaması, kayıt ve salt okunur panel"
 requires-python = ">=3.11"
 dependencies = ["Flask>=2.2,<4", "waitress>=3.0,<4", "pymavlink>=2.4.49,<3", "numpy>=1.24,<3"]
 
@@ -14,7 +14,7 @@ desktop = ["opencv-python-headless==4.12.0.88", "numpy==2.2.6"]
 test = ["pytest>=8.4,<9"]
 
 [project.scripts]
-safak-gorev2 = "safak_gorev2.main:main"
+safak-gorev2 = "safak_gorev2.competition.main:main"
 
 [tool.setuptools.packages.find]
 include = ["safak_gorev2*"]

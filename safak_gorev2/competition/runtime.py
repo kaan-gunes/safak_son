@@ -38,7 +38,7 @@ class CompetitionRuntime(Runtime):
         calibration = (Calibration.load(self.cfg.camera.calibration_file)
                        if self.options.strategy == 'center' and self.cfg.camera.calibration_file
                        and self.cfg.camera.offset_body_m is not None else None)
-        vision = DualVision(self.cfg, calibration)
+        vision = DualVision(self.cfg, calibration, self.options.camera_mount_yaw_deg)
         last = -1
         while not self.stop.is_set():
             frame = self.mailbox.get_after(last)

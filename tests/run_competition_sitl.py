@@ -30,8 +30,9 @@ from safak_gorev2.competition.route import mission_digest
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ardupilot',type=Path,required=True)
-    parser.add_argument('--strategy',choices=('center','sighting'),required=True)
-    parser.add_argument('--scenario',choices=('complete','pilot','lost-target','control-stall'),default='complete')
+    parser.add_argument('--strategy',choices=('center','quick'),required=True)
+    parser.add_argument('--scenario',choices=('complete','pilot','lost-target','control-stall',
+                        'false-target','pause-pilot','pause-stall'),default='complete')
     args=parser.parse_args()
     root=Path('artifacts/competition-sitl')/(time.strftime('%Y%m%dT%H%M%S')+'-'+args.strategy+'-'+args.scenario)
     root.mkdir(parents=True)
@@ -98,6 +99,15 @@ def main():
             flight_polygon=((40.99,28.99),(41.01,28.99),(41.01,29.01),(40.99,29.01)),
             servos={'kirmizi':Servo(9,1700,True),'mavi':Servo(10,1800,True)})
         rt=CompetitionRuntime(cfg,'flight',opts)
+        action_history=[]
+        controller_step=rt.controller.step
+        def audited_step(*values,**kwargs):
+            decision=controller_step(*values,**kwargs)
+            for action in decision.actions:
+                if action.kind != 'stop':
+                    action_history.append({'kind':action.kind,'values':action.values})
+            return decision
+        rt.controller.step=audited_step
         rt.start()
         def camera():
             fid=0; last=-1
@@ -110,6 +120,8 @@ def main():
                 image=np.full((720,1280,3),(55,70,55),np.uint8); ds=[]
                 r=body_to_ned(pose.roll,pose.pitch,pose.yaw)
                 for color, east, paint in [('mavi',4.,(210,70,20)),('kirmizi',8.,(20,50,220))]:
+                    if args.scenario == 'false-target' and args.strategy == 'center':
+                        paint = (60,60,60)  # AI yanlış pozitif; renk/köşe doğrulaması geçmemeli.
                     geom=TargetGeometry(replace(cfg.camera,target_side_m=SIDES[color]),cal)
                     tv=CAMERA_TO_BODY.T@(r.T@(np.array([0.,east,0.])-np.array([pose.north,pose.east,pose.down]))
                                            -np.array(cfg.camera.offset_body_m))
@@ -120,7 +132,10 @@ def main():
                     if not np.isfinite(q).all() or np.max(np.abs(q))>100000: continue
                     cv2.fillConvexPoly(image,q.astype(np.int32),paint)
                     box=tuple(np.clip(np.array([*q.min(axis=0),*q.max(axis=0)])/[1280,720,1280,720],0,1))
-                    if box[0]<box[2] and box[1]<box[3]: ds.append(Detection(color+'_hedef',.95,box))
+                    if (box[0]<box[2] and box[1]<box[3]
+                            and not (args.strategy=='quick' and args.scenario=='false-target'
+                                     and rt.controller.state=='VERIFYING')):
+                        ds.append(Detection(color+'_hedef',.95,box))
                 fid+=1
                 rt.mailbox.put(Frame(fid,at,time.monotonic(),image,tuple(ds),'SITL SYNTHETIC'))
         threading.Thread(target=camera,daemon=True).start()
@@ -158,11 +173,26 @@ def main():
                 item={'state':d.state,'reason':d.reason,'seconds':round(time.monotonic()-start,2),
                       'mode':t.mode,'seq':t.mission_seq,'payloads':rt.payload_status.copy()}
                 print(json.dumps(item,ensure_ascii=False),flush=True); states.append(item); previous=d.state
-            if not injected and d.state=='DESCENDING' and args.scenario!='complete':
+            if args.scenario == 'false-target' and d.state == 'VERIFYING':
+                injected = True
+            if (args.scenario == 'false-target' and injected and d.state == 'SEARCHING'
+                    and t.mode == 'AUTO' and not rt.link.owned):
+                assert not rt.payload_status and t.mission_seq == 2
+                # Ekran örneklemesi kısa RESUME_SELECT durumunu atlayabilir; komut kaydı esas.
+                assert any(x['kind']=='resume' and x['values'][0]==2 for x in action_history)
+                result={'strategy':args.strategy,'scenario':args.scenario,'states':states,
+                        'payloads':rt.payload_status,'final_state':d.state,'synthetic_vision':True,
+                        'servo_outputs_are_simulated':True,'firmware':t.firmware,
+                        'resume_seq':t.mission_seq,'passed':True,'actions':action_history}
+                (root/'result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+                print('SITL PASS '+str(root),flush=True)
+                return
+            trigger = 'STOPPING' if args.scenario.startswith('pause-') else ('VERIFYING' if args.strategy=='quick' else 'DESCENDING')
+            if not injected and d.state==trigger and args.scenario not in ('complete','false-target'):
                 injected=True
-                if args.scenario=='pilot': slot[0]=1000
+                if args.scenario in ('pilot','pause-pilot'): slot[0]=1000
                 if args.scenario=='lost-target': hidden[0]=True
-                if args.scenario=='control-stall':
+                if args.scenario in ('control-stall','pause-stall'):
                     original=rt.controller.step
                     def stalled(*values,**kwargs):
                         stop.wait(1.5); rt.controller.step=original
@@ -171,10 +201,13 @@ def main():
             if d.state in ('DONE','INCOMPLETE','ABORTED','PILOT_CONTROL'):
                 result={'strategy':args.strategy,'scenario':args.scenario,'states':states,
                         'payloads':rt.payload_status,'final_state':d.state,'synthetic_vision':True,
-                        'servo_outputs_are_simulated':True,'firmware':t.firmware}
+                        'servo_outputs_are_simulated':True,'firmware':t.firmware,'actions':action_history}
                 (root/'result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
                 if args.scenario=='complete':
                     assert d.state=='DONE' and rt.payload_status=={'kirmizi':'ACK_ACCEPTED','mavi':'ACK_ACCEPTED'},result
+                    if args.strategy=='quick':
+                        assert not any(x['kind']=='velocity' for x in action_history)
+                        assert len([x for x in action_history if x['kind']=='payload'])==2
                 else:
                     stop.wait(1.)
                     assert injected and d.state in ('ABORTED','PILOT_CONTROL') and not rt.payload_status,result
