@@ -1,3 +1,4 @@
+import math
 import time
 from collections import deque
 
@@ -34,6 +35,7 @@ class CompetitionLink(MavlinkLink):
         self.servo_outputs = {}
         self.servo_output_at = None
         self.servo_neutral_since = {}
+        self.hold_sent_at = {}
 
     def control_fallback_mode(self):
         # Kumanda AUTO'da kalırken LOITER'a zorlamak, gaz kolu düşükse sert
@@ -53,6 +55,34 @@ class CompetitionLink(MavlinkLink):
             p['release_ok'] = p['ack'] and p['output']
             p.update(at=now, ack=False, output=False, neutral=True)
 
+    def _hold_servos(self, now):
+        """Yük servolarını doğrulanmış tutma PWM'inde kilitli tut.
+
+        Her iki kanal da RC passthrough: kumandadaki kol bırakma ucundayken
+        verici açılırsa servo oraya gider ve yük düşer. 12 Eylül ölçümü
+        `DO_SET_SERVO`'nun yerde/DISARM'da passthrough'u ezdiğini ve kalıcı
+        olduğunu gösterdi (SERVO9 çıkışı 1100'de kaldı, RC girişi 982 iken).
+        Bu yüzden tutma değeri komutlanır ve çıkış ondan saparsa yenilenir.
+
+        Bırakma yoluna karışmaz: yük için komut verilmiş, darbe sürüyor veya
+        sonuç kaydedilmişse o renk artık burada tutulmaz.
+        """
+        if not self.options.hold_servos_at_startup or self.options.actuator != 'servo':
+            return
+        if self.pending is not None or self.pulse is not None:
+            return
+        for color in self.options.payloads:
+            s = self.options.servos[color]
+            if s.channel is None or s.hold_pwm is None or color in self.payload_status:
+                continue
+            if now-self.hold_sent_at.get(color, -math.inf) < 1.0:
+                continue
+            output = self.servo_outputs.get(s.channel)
+            if output is not None and abs(output-s.hold_pwm) <= 25:
+                continue
+            self._command(183, s.channel, s.hold_pwm)
+            self.hold_sent_at[color] = now
+
     def _tick(self, now):
         if self.pulse is not None and now >= self.pulse['until']:
             self._neutralize(now)
@@ -70,6 +100,7 @@ class CompetitionLink(MavlinkLink):
             self.connection.mav.mission_request_list_send(
                 self.cfg.link.target_system, self.cfg.link.target_component)
             self.last_mission_refresh = now
+        self._hold_servos(now)
 
     def _shutdown_outputs(self):
         self._neutralize(time.monotonic())

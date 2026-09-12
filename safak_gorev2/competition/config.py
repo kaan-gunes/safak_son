@@ -20,6 +20,10 @@ class Servo:
     pulse_s: float | None = None
     neutral_pwm: int | None = None
     function: int = 0
+    # Yükü tutan doğrulanmış PWM. Tanımlıysa ve hold_servos_at_startup açıksa
+    # bağlantı kurulur kurulmaz bu değer komutlanır ve korunur; böylece RC
+    # passthrough kanalındaki kol konumu yükü düşüremez.
+    hold_pwm: int | None = None
 
 
 @dataclass(frozen=True)
@@ -135,6 +139,8 @@ class Options:
     # 11 Eylül saha okumasında mavi AUX1/9 çıkışı 2006 us idi, bırakma 1800:
     # servo zaten bırakma tarafındaydı ve yük takılır takılmaz düşüyordu.
     servo_release_margin_pwm: int = 100
+    # Açılışta yük servolarını hold_pwm'de kilitle. Kapalıyken davranış aynı.
+    hold_servos_at_startup: bool = False
     # Sıralı, sonlu yönlü geçiş kapıları: [[latA,lonA],[latB,lonB]].
     # A->B doğrultusunun negatif yanından pozitif yanına geçilir.
     entry_gates: tuple = ()
@@ -209,6 +215,18 @@ class Options:
             raise ValueError('quick_verify_frames pozitif tam sayı olmalı')
         if type(self.servo_release_margin_pwm) is not int or not 0 < self.servo_release_margin_pwm <= 400:
             raise ValueError('servo_release_margin_pwm 1-400 us aralığında tam sayı olmalı')
+        for color, s in self.servos.items():
+            if s.hold_pwm is None:
+                continue
+            if type(s.hold_pwm) is not int or not 800 <= s.hold_pwm <= 2200:
+                raise ValueError(f'{color} hold_pwm 800-2200 us aralığında tam sayı olmalı')
+            if s.release_pwm is not None and abs(s.hold_pwm-s.release_pwm) <= self.servo_release_margin_pwm:
+                raise ValueError(f'{color} hold_pwm bırakma değerine çok yakın: '
+                                 f'{s.hold_pwm} vs {s.release_pwm} us')
+        if self.hold_servos_at_startup:
+            eksik = [c for c in self.payloads if self.servos[c].hold_pwm is None]
+            if eksik:
+                raise ValueError('hold_servos_at_startup için hold_pwm gerekli: '+', '.join(eksik))
         if (not isinstance(self.gps_grace_s, (int, float)) or not math.isfinite(self.gps_grace_s)
                 or not 0 <= self.gps_grace_s <= 3):
             raise ValueError('gps_grace_s 0-3 s aralığında sonlu bir sayı olmalı')
