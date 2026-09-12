@@ -145,12 +145,26 @@ class CompetitionLink(MavlinkLink):
         lower, upper = self.servo_params.get(prefix+'MIN'), self.servo_params.get(prefix+'MAX')
         if lower is None or upper is None:
             return color+' servo çıkış sınırları okunuyor; yükü takmayın'
+        # Bırakma konumu en tehlikeli hâl: yük takılır takılmaz düşer. Marj
+        # YÖNLÜ olmalı: bırakmanın ötesine geçen değer daha da tehlikelidir,
+        # oysa yönsüz bir |fark| kontrolü onu güvenli sayardı (11 Eylül'de
+        # ölçülen 2006 us, bırakma 1800'ün 206 us ötesindeydi). Bırakmanın
+        # hangi uçta olduğu otopilotun kendi sınırlarından türetilir.
+        if s.release_pwm is not None:
+            marj = self.options.servo_release_margin_pwm
+            release_yukaride = abs(s.release_pwm-upper) <= abs(s.release_pwm-lower)
+            tehlikeli = (output >= s.release_pwm-marj if release_yukaride
+                         else output <= s.release_pwm+marj)
+            if tehlikeli:
+                uc = 'üst' if release_yukaride else 'alt'
+                return (f'{color} servo BIRAKMA tarafında: {output} us, bırakma {s.release_pwm} us '
+                        f'({uc} uç, marj {marj} us); yükü takmayın')
+        # Sınır dışı çıkış yükü düşürmez ama servoyu mekanizmaya dayar:
+        # RC passthrough SERVO<n>_MIN/MAX'i uygulamaz, ham kanal değeri geçer.
         if not lower <= output <= upper:
-            return (f'{color} servo çıkışı otopilot sınırları dışında: {output} us '
-                    f'(MIN {lower:.0f}, MAX {upper:.0f}); RC kanalı servoyu sürüyor, yükü takmayın')
-        if s.release_pwm is not None and abs(output-s.release_pwm) < self.options.servo_release_margin_pwm:
-            return (f'{color} servo bırakma konumunda: {output} us, bırakma {s.release_pwm} us; '
-                    'yükü takmayın')
+            yon = 'MIN altında' if output < lower else 'MAX üstünde'
+            return (f'{color} servo çıkışı {yon}: {output} us (MIN {lower:.0f}, MAX {upper:.0f}); '
+                    'RC kanalı servoyu sınır tanımadan sürüyor, servo mekanizmaya dayanıyor')
         if s.neutral_pwm is not None and abs(output-s.neutral_pwm) > 25:
             return f'{color} servo nötr değil: {output} us; yükü takmayın'
         return None

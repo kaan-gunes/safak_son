@@ -129,7 +129,8 @@ def test_both_servos_must_hold_safe_output_for_two_seconds_before_flight(cfg,opt
     # 800 us kirmizinin birakma konumu: daha kesin olan mesaj verilir.
     link.ingest(outputs(1100,800),102.1)
     assert link.startup_servo_problem(102.1) == (
-        'kirmizi servo bırakma konumunda: 800 us, bırakma 800 us; yükü takmayın')
+        'kirmizi servo BIRAKMA tarafında: 800 us, bırakma 800 us (alt uç, marj 100 us); '
+        'yükü takmayın')
     # Birakma disinda ama notr de degil: notr mesaji korunur.
     link.ingest(outputs(1100,1200),102.2)
     assert link.startup_servo_problem(102.2) == 'kirmizi servo nötr değil: 1200 us; yükü takmayın'
@@ -144,8 +145,19 @@ def test_blue_servo_beyond_autopilot_limits_blocks_loading(cfg,options,plan,tmp_
     link=servo_link(cfg,options,plan,tmp_path)
     link.ingest(outputs(2006,1495),100)
     problem=link.startup_servo_problem(100)
-    assert problem is not None and problem.startswith('mavi servo çıkışı otopilot sınırları dışında')
-    assert '2006' in problem and 'yükü takmayın' in problem
+    assert problem is not None and problem.startswith('mavi servo BIRAKMA tarafında')
+    assert '2006' in problem and 'üst uç' in problem and 'yükü takmayın' in problem
+
+
+def test_blue_servo_below_min_is_reported_as_strain_not_release(cfg,options,plan,tmp_path):
+    """12 Eylul sahasinda olculen 982 us: MIN 1100'un altinda ama birakma 1800'un
+    uzaginda. Yuku dusurmez; servoyu mekanizmaya dayar. Mesaj bunu ayirmali."""
+    link=servo_link(cfg,options,plan,tmp_path)
+    link.ingest(outputs(982,1495),100)
+    problem=link.startup_servo_problem(100)
+    assert problem == ('mavi servo çıkışı MIN altında: 982 us (MIN 1100, MAX 1900); '
+                       'RC kanalı servoyu sınır tanımadan sürüyor, servo mekanizmaya dayanıyor')
+    assert 'BIRAKMA' not in problem
 
 
 def test_blue_servo_at_release_position_blocks_loading(cfg,options,plan,tmp_path):
@@ -153,9 +165,10 @@ def test_blue_servo_at_release_position_blocks_loading(cfg,options,plan,tmp_path
     link=servo_link(cfg,options,plan,tmp_path)
     link.ingest(outputs(1800,1495),100)
     assert link.startup_servo_problem(100) == (
-        'mavi servo bırakma konumunda: 1800 us, bırakma 1800 us; yükü takmayın')
+        'mavi servo BIRAKMA tarafında: 1800 us, bırakma 1800 us (üst uç, marj 100 us); '
+        'yükü takmayın')
     link.ingest(outputs(1750,1495),100)   # marj 100 us icinde
-    assert 'bırakma konumunda' in link.startup_servo_problem(100)
+    assert 'BIRAKMA tarafında' in link.startup_servo_problem(100)
 
 
 def test_blue_servo_safe_hold_passes(cfg,options,plan,tmp_path):

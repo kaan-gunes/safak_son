@@ -7,6 +7,7 @@
 #   bash scripts/saha.sh kontrol   uçuş öncesi tam kapı (--check)
 #   bash scripts/saha.sh ucus      görevi başlat (--mode flight)
 #   bash scripts/saha.sh gozlem    kamera/tespit bak, uçuş yok (--mode observe)
+#   bash scripts/saha.sh link      yer istasyonu linkini ölç (sinyal/bant/ağır süreç)
 #   bash scripts/saha.sh rapor     iniş sonrası uçuş raporu + PnP teşhisi
 #   bash scripts/saha.sh test      Pi'de testleri çalıştır
 set -euo pipefail
@@ -16,7 +17,7 @@ PROJE="${PROJE:-/home/furkan/Desktop/safak-gorev2-quad}"
 PROFIL="${PROFIL:-config/ana-imx708.json}"
 
 adim=${1:-}
-[ -n "$adim" ] || { sed -n '2,11p' "$0" | sed 's/^# \?//'; exit 2; }
+[ -n "$adim" ] || { sed -n '2,12p' "$0" | sed 's/^# \?//'; exit 2; }
 
 # --- ortam: her adımda aynı, elle kurmaya gerek yok ---------------------------
 [ -f "$HAILO_ENV" ] || { echo "HATA: Hailo ortamı yok: $HAILO_ENV"; exit 1; }
@@ -40,7 +41,25 @@ port_bos_ister() {
   fi
 }
 
+# --- yer istasyonu linki: panelle aynı WiFi'yi paylaşan ağır akışlar ---------
+link_paylasanlar() {
+  local agir
+  agir=$(pgrep -a 'nxserver|nxnode|nxexec|x11vnc|vncserver|wayvnc|rustdesk|anydesk|teamviewerd' 2>/dev/null || true)
+  [ -n "$agir" ] || return 0
+  echo
+  echo "UYARI: uzak masaüstü/ekran paylaşımı çalışıyor. Panelin ihtiyacı yaklaşık"
+  echo "0,4 Mbit/s; bu akışlar aynı WiFi'de megabitlerce veri taşır ve menzilde"
+  echo "linki ilk kaybettiren yük olur. ARM'dan önce kapatın (ölçüm: saha.sh link)."
+  echo "$agir" | sed 's/^/  /'
+  echo
+}
+
 case "$adim" in
+  link)
+    echo ">>> yer istasyonu linki ölçülüyor (salt okunur)"
+    python scripts/link_watch.py --panel-url "http://127.0.0.1:${PANEL_PORT:-8081}" || true
+    link_paylasanlar
+    ;;
   durum)
     echo "--- süreçler ---"
     pgrep -af 'competition\.main|safak_gorev2\.record' | sed 's/^/  /' || echo "  yok"
@@ -78,6 +97,7 @@ PY
     ;;
   ucus)
     port_bos_ister
+    link_paylasanlar
     echo ">>> görev başlıyor. İKİNCİ UÇUŞ İÇİN BU SÜRECİ YENİDEN BAŞLAT."
     python -m safak_gorev2.competition.main --config "$PROFIL" --mode flight
     ;;

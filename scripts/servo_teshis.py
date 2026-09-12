@@ -103,21 +103,31 @@ def main():
         if not o:
             print('  >>> SERVO ÇIKIŞI HİÇ OKUNAMADI'); sorun.append(color); continue
         son_o = o[-1]
+        if s.release_pwm is not None and lo is not None and hi is not None:
+            marj = opt.servo_release_margin_pwm
+            yukarida = abs(s.release_pwm-hi) <= abs(s.release_pwm-lo)
+            if (son_o >= s.release_pwm-marj) if yukarida else (son_o <= s.release_pwm+marj):
+                print(f'  >>> BIRAKMA TARAFINDA: {son_o} us, bırakma {s.release_pwm} us '
+                      f'({"üst" if yukarida else "alt"} uç) — YÜKÜ TAKMAYIN')
+                sorun.append(color)
+            else:
+                tut = 'alt' if yukarida else 'üst'
+                print(f'  >>> tutma tarafında ({tut} uç). Bırakma {s.release_pwm} us '
+                      f'{"üstte" if yukarida else "altta"}; bu kolu bu konumda tut.')
         if lo is not None and hi is not None and not lo <= son_o <= hi:
-            print(f'  >>> ÇIKIŞ SINIR DIŞI: {son_o} us  (RC kanalı servoyu doğrudan sürüyor)')
-            sorun.append(color)
-        if s.release_pwm is not None and abs(son_o-s.release_pwm) < opt.servo_release_margin_pwm:
-            print(f'  >>> BIRAKMA KONUMUNDA: {son_o} us, bırakma {s.release_pwm} us')
-            sorun.append(color)
+            print(f'  >>> UYARI sınır dışı: {son_o} us (MIN {lo:.0f}, MAX {hi:.0f}). '
+                  'Yükü düşürmez ama servo mekanizmaya dayanır; dişli/horn yıpranır.')
         if o and r and max(abs(x-y) for x, y in zip(o[-len(r):], r[-len(o):])) < 30:
             print('  >>> Çıkış RC girişini birebir izliyor: passthrough doğrulandı.')
     print('\n'+'='*70)
     if sorun:
-        print('YÜKÜ TAKMAYIN. Sorunlu: '+', '.join(sorted(set(sorun))))
-        print('Servo bırakma konumundaysa önce RC kolunu/anahtarını tutma tarafına al,')
-        print('çıkışın tutma değerine indiğini bu betikle tekrar gör, sonra yükü tak.')
+        print('YÜKÜ TAKMAYIN. Bırakma tarafında: '+', '.join(sorted(set(sorun))))
+        print('Vericide o kanalın kolunu/anahtarını diğer uca al, bu betiği tekrar')
+        print('çalıştır, çıkışın tutma tarafına geçtiğini gör, SONRA yükü tak.')
         return 1
-    print('Her iki servo da güvenli konumda görünüyor.')
+    print('Hiçbir servo bırakma tarafında değil.')
+    print('UNUTMA: iki kanal da RC passthrough. Yükler takılıyken o kollara')
+    print('dokunulmamalı; kol bırakma ucuna giderse yük anında düşer.')
     return 0
 
 
