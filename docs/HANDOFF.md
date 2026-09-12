@@ -1,5 +1,123 @@
 # ŞAFAK UAV — yeni sohbet için güncel devir, 8 Eylül 2026
 
+## DEVİR — 12 Eylül ANA GÖREV İLK BAŞARILI UÇUŞU (buradan başla)
+
+**Ana görev sahada ilk kez tamamlandı.** Sortie `20260912T064602Z-ana-imx708`,
+`DONE`, iki yük de `ACK_ACCEPTED`, 270,5 s (sınır 510 s). Kayıt:
+`artifacts/first-successful-center-20260912/`.
+
+### Bu oturumda ne değişti
+
+1. **Zaman eksenli hedef takibi** (`safak_gorev2/competition/tracking.py`, yeni).
+   Renk başına sabit hızlı Kalman; OpenCV 1–3 kare kaçırınca etiket düşmüyor,
+   uzun kayıpta (8 kare) iz bırakılıyor. **Tahmin uçuş kanıtı üretmez:**
+   köprülenen aday `source='tracked'`/`color_verified=False` olduğu için mevcut
+   `corroborated` koşuluyla doğrulama/merkezleme/bırakma yollarına giremiyor.
+   Gerçek tespitin `bbox` alanı değişmiyor, PnP ham ölçümü görüyor.
+   Denetleyicide yalnız SEARCHING dalı değişti: kaçan karede sayaç sıfırlanmaz,
+   ama artmaz da. Ayrıntı: `docs/competition/HEDEF_TAKIBI.md`.
+   Uçuş kanıtı: DETECTED=860, TRACKED=57, maliyet 0,074 ms ortanca.
+
+2. **`max_plane_tilt_deg` 15 → 30** (`config/competition-base.json`).
+   **Bırakamamanın asıl sebebi buydu.** Önceki uçuşta metrik ölçüm karelerin
+   yalnız %27'sinde kabul ediliyordu; retlerin %71,5'i düzlem eğimi kapısıydı,
+   reprojeksiyon yalnız %1,5 (yani kalibrasyon sağlam). Ölçülen eğim ortanca
+   21,2°, sınır 15°. Hata kamera çerçevesinde zaten vardı (19,2° ≈ NED 18,9°)
+   ve araç düzdü (roll 1,1°, pitch 0,5°) → montaj/poz dönüşümü suçsuz.
+   Ortalama normalden sapma 16° → sabit kayma değil, **gürültü**: yere dik
+   bakan kamerada tam altındaki düz karenin düzlem normali kötü koşullanır.
+   Kayıttan 456 köşe denemesi yeniden çözülerek doğrulandı: sınır yükselince
+   ölçülen kamera yüksekliği dağılımı **bozulmuyor, hafifçe daralıyor**
+   (p10 9,11→9,55; p90 15,68→15,47) ve poz belirsizliği reddi hiç tetiklenmiyor.
+   Uçuşta sonuç: **%27 → %73 kabul.**
+
+3. **Tarama hızı isteği kendini yeniliyor.** Otopilot `DO_CHANGE_SPEED`'i
+   `ACCEPTED` dönüp AUTO bacağı yeniden başlayınca `WPNAV_SPEED`'e dönüyordu
+   (bir duruş 6,75 m/s'de olup görevi iptal etmişti). Ölçülen hız isteği
+   `search_speed_margin_mps` kadar aşarsa istek yenileniyor. Uçuşta tarama hızı
+   ortanca 2,24, en yüksek 2,55 m/s — sapma yok.
+   `center_search_speed_mps` üst sınırı 3 → **8 m/s**; `stop_timeout_s` 5 → 8 s.
+
+4. **Görev süresi ve tur başa sarma.** `mission_deadline_s=510` (8:30) dolunca
+   yarım kalan her iş bırakılıp LAND waypointine gidilir; `intercept_deadline_s=450`
+   sonrası yeni hedefe durulmaz; `search_laps=3` tarama bölümünü tekrarlar
+   (yük kaldıysa `search_start_seq`'e döner). Sayaç **AUTO devralma anından**
+   başlar — yarışma saati daha erken başlıyorsa 510 düşürülmeli.
+   Süre sonu SITL'de uçtu; **tur başa sarma gerçek uçuşta henüz tetiklenmedi.**
+
+5. **`scripts/route_digest.py --write` artık `search_start_seq`/`search_end_seq`
+   alanlarını da rotadan türetiyor.** Rota uzayınca parmak izi güncellense bile
+   tarama aralığı eski kalıyor ve denetleyici hiç devralmıyordu; sahada iki kez
+   bu oldu (10 m → 15 m geçişinde LAND seq 6'dan 8'e taşındı).
+
+6. **Yeni teşhis araçları.** `scripts/ucus_raporu.py` (durum akışı, fren
+   mesafesi, bırakma anı, takip kanıtı, **bütün karar sebepleri sayılarıyla**)
+   ve `scripts/pnp_teshis.py` (PnP ret sebepleri). İkisi de yalnız kaydı okur,
+   `python3` ile çalışır, görev çalışırken güvenlidir.
+
+### Doğrulanan çalışan ayarlar (12 Eylül uçuşu)
+
+| Alan | Değer |
+|---|---|
+| Rota | 15 m, TAKEOFF seq1, tarama **seq 2–7**, LAND seq8, digest `0c63f72a…` |
+| `max_plane_tilt_deg` | **30.0** |
+| `center_search_speed_mps` | 2.5 (FC `WPNAV_SPEED=1000` kalabilir) |
+| `stop_timeout_s` | 8.0 |
+| `tracking` | enabled, köprü≤3 kare, kayıp>8 kare, onay 2 kare |
+| `search_laps` / `mission_deadline_s` | 3 / 510 s |
+
+### Saha işletim sırası (Pi terminali)
+
+```bash
+# 0) Rota Mission Planner'da DEĞİŞTİYSE (görev kapalı, araç DISARM):
+python scripts/route_digest.py --write config/ana-imx708.json
+# 1) Yükler yeniden takıldıysa YENİ sortie_id (defterde kaydı olan kimlik reddedilir)
+# 2) Ortam:
+cd /home/furkan/Documents/proje/hailo-rpi5-examples && source ./setup_env.sh \
+  && cd /home/furkan/Desktop/safak-gorev2-quad \
+  && export PYTHONPATH="$PWD/runtime/python:$PWD:$PYTHONPATH"
+# 3) python -m safak_gorev2.competition.main --config config/ana-imx708.json --check
+# 4) ... --mode flight
+# 5) İniş sonrası: python3 scripts/ucus_raporu.py && python3 scripts/pnp_teshis.py
+```
+
+**İkinci uçuş için program MUTLAKA yeniden başlatılmalı:** iniş sonrası durum
+`DONE`/`INCOMPLETE` kalıcıdır, aynı süreç bir daha devralmaz.
+
+### Tuzaklar (bu oturumda ikisine de düşüldü)
+
+- **Profil dosyalarının yetkili kopyası Pi'dedir.** Mac'ten `config/*.json`
+  rsync'lemek `sortie_id`, `mission_fingerprint` ve `search_end_seq` gibi saha
+  alanlarını ezer. Pi'de düzenle, Mac'e çek.
+- **`route_digest.py` ile görev süreci aynı anda çalışamaz.** İkisi de
+  Pixhawk'ın USB portunu açar; çakışınca MAVLink düşer
+  (`multiple access on port`). Önce `pgrep -af competition.main` ile bak.
+
+### Açık işler
+
+- **`max_descent_mps=0.25` en büyük zaman gideri.** 15 m→5 m alçalma ~40 s;
+  hedef başına. Büyük sahada 0,8–1,0 m/s değerlendirilmeli. **Kullanıcı kararı
+  bekliyor, değiştirilmedi.**
+- Büyük saha için irtifa/hız seçimi. Fren modeli `v²/(2·2,5)+0,3v` saha
+  kaydıyla doğrulandı (2,49 m/s→1,9 m; 7,04 m/s→11,9 m). Hedefin frenden sonra
+  kadrajda kalması için: 10 m'de 4,6 m/s, 15 m'de 5,8 m/s, 20 m'de 6,8 m/s,
+  25 m'de 7,7 m/s. 1 m'lik kırmızı hedef ~30 m'de alan eşiğine dayanır.
+- PnP hâlâ %27 reddediyor (%98'i `metric_geometry`). 35° ile ~%85 olur;
+  73% ile görev tamamlandığı için zorlanmadı.
+- `tests/run_competition_sitl.py` `quick/false-target` ve `quick/no-target`
+  senaryoları **bu oturumdan bağımsız olarak** bozuk; takip açık/kapalı aynı
+  şekilde başarısız. `false-target` yalnız AI kutusunu gizliyor ama boru hattı
+  AI okumuyor; `no-target` `INCOMPLETE` bekleyip `ABORTED` alıyor.
+- Tur başa sarma (`search_laps>1`) gerçek uçuşta hiç tetiklenmedi.
+
+### Testler
+
+Mac 408 geçti / 5 atlandı (4 Torch, 1 ayrı MOSSE ortamı). Pi'nin Hailo
+ortamında 106 ilgili test geçti. Takip maliyeti Pi'de 33,9 µs/kare; tam vision
+aşaması takip açıkken 4,51 ms, kapalıyken 4,68 ms (fark gürültü içinde).
+Ayrıntı `docs/competition/TESTLER.md` ve `docs/competition/HEDEF_TAKIBI.md`.
+
+
 ## DEVİR — 12 Eylül AUX3 açılış nötrü ve iki-yük profil
 
 - Kullanıcı ikinci yükü taktı. AUX3/11 `FUNCTION=0` ve çıkış 0 µs, RC11 ise 1495 µs stabil bulundu. Kullanıcı onayıyla yalnız `SERVO11_FUNCTION=61` yazılıp geri okundu; AUX3 servo komutu olmadan 1495 µs nötr çıkışa geçti. Uçuş bırakması kanal11 800 µs/0,3 s, ardından 1500 µs olarak aynıdır. ARM/mod/servo komutu verilmedi.

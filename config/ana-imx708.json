@@ -4,7 +4,7 @@
   "camera_mount_yaw_deg": 180,
   "actuator": "servo",
   "vehicle_type": 13,
-  "sortie_id": "20260911T213056Z-ana-imx708",
+  "sortie_id": "20260912T064602Z-ana-imx708",
   "mission_fingerprint": "0c63f72a1eca97accbcb9bcbd22d2d012b1b23f25147aa26c78b1ffb2bc72340",
   "search_start_seq": 2,
   "search_end_seq": 7,

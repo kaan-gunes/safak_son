@@ -1,61 +1,62 @@
 {
- "camera": {
-  "width": 1280,
-  "height": 720,
-  "fps": 50,
-  "calibration_file": "config/camera.imx708-infinity-approx.json",
-  "confidence_min": 0.4,
-  "offset_body_m": [
-   0.11,
-   0.0,
-   0.05
-  ],
-  "target_side_m": 2.0,
-  "lens_position": 0.0,
-  "sensor_output_size": [
-   2304,
-   1296
-  ],
-  "variant": "imx708",
-  "backend": "picamera2",
-  "identity": "imx708"
- },
- "control": {
-  "target_camera_height_m": 5.0,
-  "center_hold_s": 1.5,
-  "release_hold_s": 3.0,
-  "max_horizontal_speed_mps": 0.8,
-  "max_descent_mps": 0.25,
-  "max_accel_mps2": 0.2,
-  "minimum_camera_height_m": 3.0,
-  "minimum_intercept_relative_alt_m": 9.5,
-  "acquire_s": 0.5,
-  "max_climb_mps": 1.0,
-  "interaction_timeout_s": 200.0,
-  "center_tolerance_m": 0.5,
-  "descent_center_tolerance_m": 0.7,
-  "height_tolerance_m": 1.0,
-  "release_horizontal_speed_mps": 0.3,
-  "release_vertical_speed_mps": 0.2,
-  "lost_target_abort_s": 2.5,
-  "center_tolerance_height_ratio": 0.05
- },
- "link": {
-  "device": "/dev/serial/by-id/usb-Hex_ProfiCNC_CubeOrange_220047001251313132383631-if00"
- },
- "mission": {
-  "takeoff_mode": "auto",
-  "return_mode": "land",
-  "direct_land_corridor_checked": true
- },
- "web": {
-  "host": "0.0.0.0",
-  "port": 8081,
-  "fps": 4,
-  "jpeg_quality": 35,
-  "width": 640
- },
- "runtime_dir": "runtime/competition",
- "hef_file": "best_hailo_model/safakyepyeni.hef",
- "hef_sha256": "8433d13ecee9d05852178a0f38c057217d5a7f2db4436036b2a978e877c192e2"
+  "camera": {
+    "width": 1280,
+    "height": 720,
+    "fps": 50,
+    "calibration_file": "config/camera.imx708-infinity-approx.json",
+    "confidence_min": 0.4,
+    "offset_body_m": [
+      0.11,
+      0.0,
+      0.05
+    ],
+    "target_side_m": 2.0,
+    "lens_position": 0.0,
+    "sensor_output_size": [
+      2304,
+      1296
+    ],
+    "variant": "imx708",
+    "backend": "picamera2",
+    "identity": "imx708",
+    "max_plane_tilt_deg": 30.0
+  },
+  "control": {
+    "target_camera_height_m": 5.0,
+    "center_hold_s": 1.5,
+    "release_hold_s": 3.0,
+    "max_horizontal_speed_mps": 0.8,
+    "max_descent_mps": 0.25,
+    "max_accel_mps2": 0.2,
+    "minimum_camera_height_m": 3.0,
+    "minimum_intercept_relative_alt_m": 9.5,
+    "acquire_s": 0.5,
+    "max_climb_mps": 1.0,
+    "interaction_timeout_s": 200.0,
+    "center_tolerance_m": 0.5,
+    "descent_center_tolerance_m": 0.7,
+    "height_tolerance_m": 1.0,
+    "release_horizontal_speed_mps": 0.3,
+    "release_vertical_speed_mps": 0.2,
+    "lost_target_abort_s": 2.5,
+    "center_tolerance_height_ratio": 0.05
+  },
+  "link": {
+    "device": "/dev/serial/by-id/usb-Hex_ProfiCNC_CubeOrange_220047001251313132383631-if00"
+  },
+  "mission": {
+    "takeoff_mode": "auto",
+    "return_mode": "land",
+    "direct_land_corridor_checked": true
+  },
+  "web": {
+    "host": "0.0.0.0",
+    "port": 8081,
+    "fps": 4,
+    "jpeg_quality": 35,
+    "width": 640
+  },
+  "runtime_dir": "runtime/competition",
+  "hef_file": "best_hailo_model/safakyepyeni.hef",
+  "hef_sha256": "8433d13ecee9d05852178a0f38c057217d5a7f2db4436036b2a978e877c192e2"
 }
