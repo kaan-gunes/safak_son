@@ -19,14 +19,33 @@ HAM=https://raw.githubusercontent.com/kaan-gunes/safak_son/$DAL
 dur() { echo; echo "############ DURDURULDU ############"; echo "$*"; echo; exit 1; }
 baslik() { echo; echo "--- $* ---"; }
 
-# ---- ortam: setup_env.sh cikis kodu ne olursa olsun zincir kopmaz ----------
-[ -f "$HAILO_ENV" ] || dur "Hailo ortami bulunamadi: $HAILO_ENV"
-cd "$(dirname "$HAILO_ENV")" || dur "Hailo klasorune girilemedi"
-# shellcheck disable=SC1091
-source "$(basename "$HAILO_ENV")" >/dev/null 2>&1
+# ---- ortam ----------------------------------------------------------------
+# setup_env.sh bazi kontrollerde `exit` cagiriyor. Source edilen bir dosyadaki
+# exit bu betigi de oldurur -- ciktisi bastirilmissa sessizce, kod 1 ile.
+# O yuzden setup_env.sh source EDILMEZ; yaptigi iki sey dogrudan yapilir:
+# Hailo venv'ini etkinlestirmek ve hailo klasorunu PYTHONPATH'e eklemek.
+HAILO_DIR=$(dirname "$HAILO_ENV")
+VENV=""
+for aday in "$HAILO_DIR"/venv_hailo_rpi_examples/bin/activate \
+            "$HAILO_DIR"/venv/bin/activate \
+            "$HAILO_DIR"/.venv/bin/activate; do
+  [ -f "$aday" ] && { VENV=$aday; break; }
+done
+[ -n "$VENV" ] || dur "Hailo sanal ortami bulunamadi.
+Arandi:
+  $HAILO_DIR/venv_hailo_rpi_examples/bin/activate
+  $HAILO_DIR/venv/bin/activate
+  $HAILO_DIR/.venv/bin/activate
+Dogru yolu HAILO_ENV ile ver:  HAILO_ENV=/yol/setup_env.sh safak"
+# shellcheck disable=SC1090
+source "$VENV" || dur "Sanal ortam etkinlestirilemedi: $VENV"
+export PYTHONPATH="$HAILO_DIR:${PYTHONPATH:-}"
 cd "$PROJE" || dur "Proje klasoru bulunamadi: $PROJE"
-export PYTHONPATH="$PWD/runtime/python:$PWD:${PYTHONPATH:-}"
+export PYTHONPATH="$PWD/runtime/python:$PWD:$PYTHONPATH"
 export MAVLINK20=1
+python -c "import pymavlink, cv2" 2>/dev/null \
+  || dur "Sanal ortam eksik: pymavlink/cv2 yuklenemedi ($VENV).
+Elle dene:  source $VENV && python -c 'import pymavlink, cv2'" 
 
 adim=${1:-ucus}
 
