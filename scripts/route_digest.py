@@ -63,9 +63,26 @@ def main():
         profile = json.loads(path.read_text())
         previous = profile.get('mission_fingerprint')
         profile['mission_fingerprint'] = digest
+        changes = [f'mission_fingerprint {previous} -> {digest}']
+        # Rota uzunluğu değişince tarama aralığı da değişir. mission kapsamında
+        # aralık rotadan tek anlamlı çıkar: TAKEOFF sonrası ilk waypointten
+        # LAND öncesine kadar. field kapsamında seçim kullanıcınındır.
+        if profile.get('search_scope') == 'mission':
+            wanted = {'search_start_seq': (plan.takeoff_seq or 0)+1,
+                      'search_end_seq': plan.land_seq-1}
+            for key, value in wanted.items():
+                if profile.get(key) != value:
+                    changes.append(f'{key} {profile.get(key)} -> {value}')
+                    profile[key] = value
+            if wanted['search_start_seq'] > wanted['search_end_seq']:
+                raise SystemExit('Rotada TAKEOFF ile LAND arasında tarama waypointi yok')
         path.write_text(json.dumps(profile, ensure_ascii=False, indent=2)+'\n')
-        print(f'\n{path}: mission_fingerprint {previous} -> {digest}')
-        print('Rota içeriğini gözle doğrulamadan uçma; bu araç yalnız digest yazar.')
+        print(f'\n{path}:')
+        for line in changes:
+            print('  '+line)
+        if len(changes) == 1:
+            print('  (tarama aralığı zaten rotayla uyumlu)')
+        print('Rota içeriğini gözle doğrulamadan uçma; bu araç yalnız profil alanlarını yazar.')
 
 
 if __name__ == '__main__':

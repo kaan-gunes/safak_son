@@ -91,6 +91,22 @@ def report(path: Path):
               f'kayıp>{tracking.get("max_missed_frames")} kare  '
               f'onay={tracking.get("confirmation_frames")} kare')
 
+    # ---- Neden ilerlemedi: durum hiç değişmezse akış tek satır kalır ve
+    # asıl engel görünmez. Bütün sebepler sayılarıyla listelenir.
+    header('SEBEPLER (en çok görülen = asıl engel)')
+    counts, first = {}, {}
+    for row in rows:
+        reason = row.get('decision', {}).get('reason', '')
+        counts[reason] = counts.get(reason, 0)+1
+        first.setdefault(reason, (row.get('monotonic') or 0)-start)
+    for reason, n in sorted(counts.items(), key=lambda kv: -kv[1]):
+        print(f'{first[reason]:7.1f}s  x{n:<5} {reason}')
+    print(f'\nSON SEBEP: {last.get("decision", {}).get("reason")}')
+    t = last.get('telemetry', {})
+    print(f'son telemetri : mod={t.get("mode")} armed={t.get("armed")} '
+          f'landed={t.get("landed")} seq={t.get("mission_seq")} '
+          f'rc={t.get("rc_selected_mode")} alt={number(t.get("relative_alt_m"), 1, " m")}')
+
     # ---- Durum akışı
     header('DURUM AKIŞI')
     timeline, previous = [], None
