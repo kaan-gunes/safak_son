@@ -445,10 +445,16 @@ def test_arducopter_land_wire_parameter_is_supported(cfg,options,plan,tmp_path):
     assert link.failure is not None
 
 
-def test_center_search_speed_allows_requested_three_mps_but_no_more():
-    replace(Options(), strategy='center', center_search_speed_mps=3.0).validate()
-    with pytest.raises(ValueError):
-        replace(Options(), strategy='center', center_search_speed_mps=3.01).validate()
+def test_center_search_speed_upper_bound_follows_braking_analysis():
+    # Üst sınır 3 -> 8 m/s: büyük sahada tarama hızı irtifayla seçilir.
+    # Fren mesafesi v^2/(2*2.5)+0.3v modeli saha kaydıyla doğrulandı
+    # (2,49 m/s -> 1,9 m; 7,04 m/s -> 11,9 m). 25 m irtifada 7,7 m/s hedefi
+    # frenden sonra hâlâ kadrajda tutuyor; 8 m/s bunun hemen üstü.
+    for value in (0.5, 3.0, 8.0):
+        replace(Options(), strategy='center', center_search_speed_mps=value).validate()
+    for value in (0.49, 8.01):
+        with pytest.raises(ValueError):
+            replace(Options(), strategy='center', center_search_speed_mps=value).validate()
 
 
 @pytest.mark.parametrize('profile', ['config/ana-gorev.json', 'config/ana-imx708.json',

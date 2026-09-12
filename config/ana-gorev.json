@@ -30,7 +30,7 @@
   "quick_iou": 0.25,
   "stop_speed_mps": 0.2,
   "stop_hold_s": 0.3,
-  "stop_timeout_s": 5.0,
+  "stop_timeout_s": 8.0,
   "verify_timeout_s": 8.0,
   "retry_delay_s": 5.0,
   "release_ack_timeout_s": 2.0,

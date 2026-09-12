@@ -119,6 +119,11 @@ class Options:
     # Bu andan sonra YENİ hedefe durulmaz; başlamış iş sürer. None = sınır yok.
     intercept_deadline_s: float | None = None
     center_search_speed_mps: float | None = None  # Yalnız ana AUTO oturumu; PARAM_SET yok.
+    # Otopilot DO_CHANGE_SPEED'i kabul edip AUTO bacağı yeniden başlayınca
+    # WPNAV_SPEED'e dönebiliyor. Ölçülen hız isteği bu payı aşarsa istek
+    # yenilenir; aynı istek bu aralıktan sık tekrarlanmaz.
+    search_speed_margin_mps: float = 1.0
+    search_speed_retry_s: float = 2.0
     # Sıralı, sonlu yönlü geçiş kapıları: [[latA,lonA],[latB,lonB]].
     # A->B doğrultusunun negatif yanından pozitif yanına geçilir.
     entry_gates: tuple = ()
@@ -166,8 +171,11 @@ class Options:
         if self.center_search_speed_mps is not None and (self.strategy != 'center'
                 or type(self.center_search_speed_mps) not in (int, float)
                 or not math.isfinite(self.center_search_speed_mps)
-                or not .5 <= self.center_search_speed_mps <= 3):
-            raise ValueError('Geçici tarama hızı yalnız ana görevde 0,5–3 m/s olabilir')
+                or not .5 <= self.center_search_speed_mps <= 8):
+            # Üst sınır fren mesafesi/kadraj ayak izi analizinden geldi: 15 m'de
+            # 5,8 m/s, 25 m'de 7,7 m/s hedefi frenden sonra kadrajda tutuyor.
+            # Uygun değeri irtifaya göre kullanıcı seçer.
+            raise ValueError('Geçici tarama hızı yalnız ana görevde 0,5–8 m/s olabilir')
         if self.camera_mount_yaw_deg is not None and (type(self.camera_mount_yaw_deg) is not int or self.camera_mount_yaw_deg not in (0, 180)):
             raise ValueError('Yere bakan kamera montajı 0 veya 180 derece olmalı')
         if self.strategy not in ('center', 'quick') or self.actuator not in ('simulated', 'servo'):
@@ -188,7 +196,8 @@ class Options:
             raise ValueError('quick_frames pozitif tam sayı olmalı')
         if type(self.quick_verify_frames) is not int or self.quick_verify_frames < 1:
             raise ValueError('quick_verify_frames pozitif tam sayı olmalı')
-        for name in ('quick_hold_s', 'release_ack_timeout_s', 'quick_iou', 'stop_speed_mps',
+        for name in ('search_speed_margin_mps', 'search_speed_retry_s',
+                     'quick_hold_s', 'release_ack_timeout_s', 'quick_iou', 'stop_speed_mps',
                      'stop_hold_s', 'stop_timeout_s', 'verify_timeout_s', 'retry_delay_s', 'quick_verify_s'):
             value = getattr(self, name)
             if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:

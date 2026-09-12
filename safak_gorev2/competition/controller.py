@@ -40,6 +40,7 @@ class DualController:
         self.verify_frame = None
         self.retry_until = {c: -math.inf for c in COLORS}
         self.search_speed_set = False
+        self.speed_requested_at = -math.inf
         self.lap = 1  # Uçulan tarama turu; search_laps bunu sınırlar.
         self.started_at = None  # AUTO devralma anı; görev süresi buradan sayılır.
         # Köprüleme yalnız taramada, yalnız sayaç sıfırlanmasını önlemek için
@@ -203,9 +204,17 @@ class DualController:
             else:
                 return self.decision()
         if (self.options.strategy == 'center' and self.options.center_search_speed_mps is not None
+                and self.search_speed_set and self.child is None and t.mode == 'AUTO'
+                and t.horizontal_speed > self.options.center_search_speed_mps+self.options.search_speed_margin_mps
+                and now-self.speed_requested_at > self.options.search_speed_retry_s):
+            # Otopilot isteği kabul etse bile AUTO bacağı yeniden başlayınca
+            # WPNAV_SPEED'e dönebiliyor; ölçülen hız bunu ele veriyor.
+            self.search_speed_set = False
+        if (self.options.strategy == 'center' and self.options.center_search_speed_mps is not None
                 and not self.search_speed_set and self.child is None and t.mode == 'AUTO'
                 and t.mission_seq is not None
                 and mission.takeoff_seq <= t.mission_seq <= self.options.search_end_seq):
+            self.speed_requested_at = now
             self.transition('SET_SEARCH_SPEED', now, 'Ana görev için geçici AUTO tarama hızı ayarlanıyor')
             return self.decision(Action('search_speed', (self.options.center_search_speed_mps, self.rc_slot)))
 
