@@ -110,6 +110,14 @@ class Options:
     search_end_seq: int | None = None
     route_reviewed: bool = False
     search_scope: str = 'field'  # field: saha kapıları; mission: TAKEOFF sonrası tüm waypointler.
+    # Tarama bölümünün kaç kez uçulacağı. 1 = bugünkü davranış (tek tur).
+    # Tur sonunda takılı yüklerden biri hâlâ duruyorsa search_start_seq'e dönülür.
+    search_laps: int = 1
+    # Kalkıştan (AUTO devralma anından) itibaren saniye. Süre dolunca yarım
+    # kalan her iş bırakılıp LAND waypointine gidilir. None = sınır yok.
+    mission_deadline_s: float | None = None
+    # Bu andan sonra YENİ hedefe durulmaz; başlamış iş sürer. None = sınır yok.
+    intercept_deadline_s: float | None = None
     center_search_speed_mps: float | None = None  # Yalnız ana AUTO oturumu; PARAM_SET yok.
     # Sıralı, sonlu yönlü geçiş kapıları: [[latA,lonA],[latB,lonB]].
     # A->B doğrultusunun negatif yanından pozitif yanına geçilir.
@@ -164,6 +172,18 @@ class Options:
             raise ValueError('Yere bakan kamera montajı 0 veya 180 derece olmalı')
         if self.strategy not in ('center', 'quick') or self.actuator not in ('simulated', 'servo'):
             raise ValueError('Strateji/aktüatör seçimi geçersiz')
+        for name in ('mission_deadline_s', 'intercept_deadline_s'):
+            value = getattr(self, name)
+            if value is not None and (type(value) not in (int, float) or not math.isfinite(value)
+                                      or not 30 <= value <= 3600):
+                raise ValueError(f'{name} 30-3600 saniye arası olmalı veya null')
+        if (self.intercept_deadline_s is not None and self.mission_deadline_s is not None
+                and self.intercept_deadline_s > self.mission_deadline_s):
+            raise ValueError('intercept_deadline_s mission_deadline_s değerini aşamaz')
+        if self.search_laps > 1 and self.mission_deadline_s is None:
+            raise ValueError('Birden çok tarama turu için mission_deadline_s zorunlu')
+        if type(self.search_laps) is not int or not 1 <= self.search_laps <= 10:
+            raise ValueError('search_laps 1-10 arası tam sayı olmalı')
         if type(self.quick_frames) is not int or self.quick_frames < 1:
             raise ValueError('quick_frames pozitif tam sayı olmalı')
         if type(self.quick_verify_frames) is not int or self.quick_verify_frames < 1:

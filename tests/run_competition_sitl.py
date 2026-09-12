@@ -34,6 +34,8 @@ def main():
     parser.add_argument('--strategy',choices=('center','quick'),required=True)
     parser.add_argument('--mission-scope', action='store_true', help='Güncel saha gibi TAKEOFF–LAND arası tüm waypointleri tara')
     parser.add_argument('--center-recovery', action='store_true', help='10 m ana profil + geçici AUTO hızı')
+    parser.add_argument('--deadline', type=float, help='Görev süresi sınırı (s); dolunca LAND')
+    parser.add_argument('--laps', type=int, default=1, help='Tarama turu sayısı')
     parser.add_argument('--tracking', action='store_true',
                         help='Zaman eksenli hedef takibini saha profilindeki gibi açık koş')
     parser.add_argument('--scenario',choices=('complete','pilot','lost-target','control-stall',
@@ -124,6 +126,8 @@ def main():
             opts=replace(opts,search_scope='mission',search_end_seq=plan.land_seq-1)
         if args.tracking:
             opts=replace(opts,tracking=Tracking(enabled=True))
+        if args.deadline is not None:
+            opts=replace(opts,mission_deadline_s=args.deadline,search_laps=args.laps)
         rt=CompetitionRuntime(cfg,'flight',opts)
         action_history=[]
         controller_step=rt.controller.step
@@ -209,7 +213,7 @@ def main():
                 assert not rt.payload_status and t.mission_seq == 2
                 # Ekran örneklemesi kısa RESUME_SELECT durumunu atlayabilir; komut kaydı esas.
                 assert any(x['kind']=='resume' and x['values'][0]==2 for x in action_history)
-                result={'strategy':args.strategy,'scenario':args.scenario,'tracking':args.tracking,'states':states,
+                result={'strategy':args.strategy,'scenario':args.scenario,'tracking':args.tracking,'deadline':args.deadline,'laps':args.laps,'states':states,
                         'payloads':rt.payload_status,'final_state':d.state,'synthetic_vision':True,
                         'servo_outputs_are_simulated':True,'firmware':t.firmware,
                         'resume_seq':t.mission_seq,'passed':True,'actions':action_history}
@@ -228,7 +232,7 @@ def main():
                         return original(*values,**kwargs)
                     rt.controller.step=stalled
             if d.state in ('DONE','INCOMPLETE','ABORTED','PILOT_CONTROL'):
-                result={'strategy':args.strategy,'scenario':args.scenario,'tracking':args.tracking,'states':states,
+                result={'strategy':args.strategy,'scenario':args.scenario,'tracking':args.tracking,'deadline':args.deadline,'laps':args.laps,'states':states,
                         'payloads':rt.payload_status,'final_state':d.state,'synthetic_vision':True,
                         'servo_outputs_are_simulated':True,'firmware':t.firmware,'actions':action_history}
                 (root/'result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))

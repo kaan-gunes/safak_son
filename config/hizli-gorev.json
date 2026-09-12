@@ -12,6 +12,9 @@
   "entry_gates": [],
   "finish_gate": [],
   "flight_polygon": [],
+  "search_laps": 3,
+  "mission_deadline_s": 510,
+  "intercept_deadline_s": 450,
   "tracking": {
     "enabled": true,
     "debug": false,

@@ -40,6 +40,8 @@ class DualController:
         self.verify_frame = None
         self.retry_until = {c: -math.inf for c in COLORS}
         self.search_speed_set = False
+        self.lap = 1  # Uçulan tarama turu; search_laps bunu sınırlar.
+        self.started_at = None  # AUTO devralma anı; görev süresi buradan sayılır.
         # Köprüleme yalnız taramada, yalnız sayaç sıfırlanmasını önlemek için
         # kullanılır. Duruş, doğrulama, merkezleme ve bırakma yolları gerçek
         # OpenCV kanıtı ister; tahmin oralara hiç girmez.
@@ -102,6 +104,9 @@ class DualController:
                 expected.add('AUTO')
             if self.state == 'RESUME_AUTO':
                 expected.add('AUTO')
+            if self.state in ('RELAP_CLAIM', 'TIME_LAND_CLAIM'):
+                # AUTO'dan GUIDED'e geçiş isteniyor; iki mod da bu kısa pencerede olağan.
+                expected.update(('AUTO', 'GUIDED'))
             if self.state == 'AUTO_FINISH':
                 expected.add('LAND')
             if self.state == 'SELECT_LAND':
@@ -164,7 +169,7 @@ class DualController:
         if not self.saw_disarmed:
             return self.decision(reason='Havada yeniden başlatma devralmaz; önce yerde DISARM görülmeli')
         if t.mode == 'AUTO' and t.rc_selected_mode == 'AUTO' and not self.started:
-            self.started, self.rc_slot = True, t.rc_slot
+            self.started, self.rc_slot, self.started_at = True, t.rc_slot, now
         if not self.started:
             return self.decision()
         self.route.update(t, now, self.cfg.control.telemetry_timeout_s)
@@ -178,6 +183,14 @@ class DualController:
                 self.reset_holds()
                 return self.decision(reason='AUTO giriş rotası bekleniyor; araç henüz izinli poligon içinde değil')
             return self.abort(now, t, 'İzinli uçuş poligonu dışında')
+
+        # Görev süresi: yarım kalan merkezleme/alçalma/tur dahil her iş bırakılır.
+        # RELEASE_WAIT hariç tutulur; yük komutu zaten en fazla
+        # release_ack_timeout_s içinde sonuçlanır ve sonucu kaydedilmelidir.
+        if (self.past(now, self.options.mission_deadline_s)
+                and self.state not in ('RELEASE_WAIT', 'TIME_LAND_CLAIM', 'SELECT_LAND',
+                                       'HANDOFF_LAND', 'LANDING', 'AUTO_FINISH')):
+            return self.begin_time_land(now, t, mission)
 
         if self.state == 'SET_SEARCH_SPEED':
             speed_reply = search_speed_status or {}
@@ -195,6 +208,29 @@ class DualController:
                 and mission.takeoff_seq <= t.mission_seq <= self.options.search_end_seq):
             self.transition('SET_SEARCH_SPEED', now, 'Ana görev için geçici AUTO tarama hızı ayarlanıyor')
             return self.decision(Action('search_speed', (self.options.center_search_speed_mps, self.rc_slot)))
+
+        if self.state == 'TIME_LAND_CLAIM':
+            if now-self.entered > self.cfg.control.mode_timeout_s:
+                return self.abort(now, t, 'Süre sonu inişi için GUIDED geçişi doğrulanamadı')
+            if t.mode != 'GUIDED' or t.heartbeat_at <= self.entered:
+                return self.decision(Action('stop'))
+            self.transition('SELECT_LAND', now, 'Görev süresi doldu; LAND waypointi seçiliyor')
+            return self.decision(Action('stop'), Action('mission_current', (mission.land_seq,)))
+
+        if self.state == 'RELAP_CLAIM':
+            if now-self.entered > self.cfg.control.mode_timeout_s:
+                return self.abort(now, t, 'Yeni tarama turu için GUIDED geçişi doğrulanamadı')
+            if t.mode != 'GUIDED' or t.heartbeat_at <= self.entered:
+                return self.decision(Action('stop'))
+            # Duruştayız ve kontrol bizde: kesilen tur yerine tarama başına dön.
+            # route.finished burada sıfırlanır; GUIDED'de olduğumuz için
+            # RouteProgress.update() onu yeniden doğru yapmaz.
+            self.route.finished = False
+            self.resume_seq = self.options.search_start_seq
+            self.transition('RESUME_SELECT', now,
+                            str(self.lap)+'. tarama turu için başlangıç waypointi seçiliyor')
+            return self.decision(Action('stop'),
+                                 Action('resume', (self.resume_seq, mission_digest(mission))))
 
         if self.state == 'RELEASE_WAIT':
             status = statuses.get(PAYLOAD[self.selected])
@@ -294,8 +330,18 @@ class DualController:
             return replace(d, reason=self.selected+' hedef: '+d.reason.replace('Mavi hedef', 'Hedef'))
 
         if t.mission_seq is not None and t.mission_seq > self.options.search_end_seq:
-            self.transition('AUTO_FINISH', now, 'Tarama bitti; kalan yükler korunarak dönüş/bitiş/LAND devam ediyor')
             self.reset_holds()
+            if (self.done != self.required_targets and self.lap < self.options.search_laps
+                    and self.child is None and self.options.search_start_seq is not None):
+                self.lap += 1
+                # Eksik yük var ve tur hakkı kaldı: AUTO bitiş/LAND'e bırakmak
+                # yerine duruş alıp tarama başına dön. Yük komutu verilmiş
+                # renkler `requested` içinde kaldığı için ikinci kez denenmez.
+                self.child = Controller(self.cfg)
+                self.transition('RELAP_CLAIM', now, 'Tarama bitti, yük kaldı; '+str(self.lap)
+                                +'. tur için '+str(self.options.search_start_seq)+'. waypointe dönülüyor')
+                return self.decision(Action('claim', (t.rc_slot,)), Action('mode', ('GUIDED', 'AUTO')))
+            self.transition('AUTO_FINISH', now, 'Tarama bitti; kalan yükler korunarak dönüş/bitiş/LAND devam ediyor')
             return self.decision()
         if (not self.route.search_allowed(t, mission) or t.relative_alt_m < self.cfg.control.minimum_intercept_relative_alt_m):
             self.reset_holds()
@@ -341,9 +387,32 @@ class DualController:
             if h.count >= self.options.quick_frames and h.elapsed+1e-9 >= self.options.quick_hold_s:
                 ready.append(choice)
         if ready:
+            if self.past(now, self.options.intercept_deadline_s):
+                # Süre sonuna yakın yeni hedefe durma: bitiremeyeceğimiz bir
+                # merkezleme için rotayı kesmek iniş payını yer.
+                return self.decision(reason='Süre sonuna yakın; yeni hedefe durulmuyor')
             choice = max(ready, key=lambda x:x.rank)
             return self.begin_stop(now, t, choice)
         return self.decision(reason='Mavi/kırmızı aday aranıyor; ilk doğrulama '+str(self.options.quick_hold_s)+' s')
+
+    def elapsed(self, now):
+        """Kalkıştan (AUTO devralma) beri geçen saniye; devralınmadıysa None."""
+        return None if self.started_at is None else now-self.started_at
+
+    def past(self, now, limit):
+        elapsed = self.elapsed(now)
+        return limit is not None and elapsed is not None and elapsed >= limit
+
+    def begin_time_land(self, now, t, mission):
+        """Süre doldu: yarım kalan her iş bırakılır, LAND waypointine gidilir."""
+        if self.child is not None or t.mode == 'GUIDED':
+            self.reset_holds()
+            self.transition('SELECT_LAND', now, 'Görev süresi doldu; LAND waypointi seçiliyor')
+            return self.decision(Action('stop'), Action('mission_current', (mission.land_seq,)))
+        self.reset_holds()
+        self.transition('TIME_LAND_CLAIM', now,
+                        'Görev süresi doldu; inişe geçmek için GUIDED isteniyor')
+        return self.decision(Action('claim', (t.rc_slot,)), Action('mode', ('GUIDED', 'AUTO')))
 
     def fresh_candidates(self, candidates, frame_id, frame_at):
         return [x for x in candidates if x.color in COLORS

@@ -141,3 +141,63 @@ Kayıtlar: `competition-<sortie>.jsonl` içindeki her aday artık `track_state`,
   yanlış renk eşiğini veya odak sorununu onarmaz.
 - Gerçek saha görüntüsüyle blur toleransı henüz ölçülmedi; aşağıdaki kanıt
   sentetik görüntü ve SITL'dir, uçuş kabulü değildir.
+
+---
+
+# Tarama turu ve görev süresi — 12 Eylül 2026
+
+## Görev süresi (10 dakikalık yarışma penceresi)
+
+Sayaç **AUTO devralma anından** (`self.started_at`, pratikte AUTO kalkış)
+başlar. İki sınır vardır:
+
+| Ayar | Saha değeri | Ne yapar |
+|---|---|---|
+| `mission_deadline_s` | 510 (8:30) | Yarım kalan merkezleme/alçalma/tur dahil **her iş bırakılır**, LAND waypointine gidilir. |
+| `intercept_deadline_s` | 450 (7:30) | Bu andan sonra **yeni** hedefe durulmaz; başlamış iş sürer. |
+| `search_laps` | 3 | Tarama bölümü en çok bu kadar kez uçulur. |
+
+`null` yazmak ilgili sınırı kapatır. Kod varsayılanları `search_laps=1`,
+iki süre de `None` — yani eski davranış. `search_laps > 1` iken
+`mission_deadline_s` **zorunludur**; aksi halde profil reddedilir. Tur sayısı
+tek başına bir güvenlik ağı değildir, süre sınırı esas koruyucudur.
+
+**Dikkat:** sayaç bizim gördüğümüz AUTO kalkıştan başlar. Yarışma saatin
+daha erken başlıyorsa (hakem işareti, ARM anı) 510'u o farkı çıkararak azalt.
+
+Süre dolduğunda akış: `TIME_LAND_CLAIM` (AUTO iken GUIDED istenir) →
+`SELECT_LAND` → `HANDOFF_LAND` → `LANDING`. Kontrol zaten bizdeyse
+(merkezleme/alçalma sürüyorsa) doğrudan `SELECT_LAND`'e geçilir.
+`RELEASE_WAIT` hariç tutulur: yük komutu en fazla `release_ack_timeout_s`
+içinde sonuçlanır ve sonucu deftere yazılmalıdır; süre sonu bir sonraki
+adımda devreye girer.
+
+## Tarama turunu başa sarma
+
+Tarama bölümü bitip (`mission_seq > search_end_seq`) takılı yüklerden biri
+hâlâ duruyorsa, AUTO'nun bitiş/LAND rotasına bırakmak yerine:
+
+`RELAP_CLAIM` (claim + GUIDED) → `RESUME_SELECT` (mission_set_current →
+`search_start_seq`) → `RESUME_AUTO` → `SEARCHING`.
+
+`RESUME_SELECT`/`RESUME_AUTO` mevcut, denenmiş yol; yalnız girişi yeni.
+`route.finished` GUIDED'deyken sıfırlanır, böylece ikinci tur için tarama ve
+yük izni geri gelir. Yük komutu verilmiş renkler `requested` içinde kaldığı
+için ikinci kez denenmez.
+
+## Doğrulama
+
+* 408 yerel test geçti / 5 atlandı (öncesi 387/5). Yeni
+  `tests/test_lap_and_deadline.py` 21 test.
+* Süre sonu SITL'de uçtu: 40 s sınırla `SEARCHING` → `TIME_LAND_CLAIM` →
+  `HANDOFF_LAND` → `LANDING` → `INCOMPLETE`, yük komutu 0.
+* Ana görev tam senaryosu süre sınırı ve 3 tur açıkken **DONE**, iki yük.
+* **Tur başa sarma SITL'de sınanamadı.** SITL rotasında `search_end_seq`
+  zorunlu olarak `land_seq-1` olduğu için tarama biter bitmez araç LAND
+  kalemine geçiyor ve kayıt penceresi kapanıyor. Bunun yerine birim testler
+  tüm zinciri, ayrıca iki test komutun gerçekten MAVLink'e
+  (`mission_set_current_send`) ulaştığını doğruluyor. Gerçek uçuşta bu yolun
+  ilk kanıtı alınmadı.
+* Birim test, `RELAP_CLAIM` sırasında AUTO modunun izinli modlar arasında
+  olmamasından doğan gerçek bir hatayı yakaladı (uçuşta pilot müdahalesi
+  sanılıp iptal ederdi); düzeltildi.
