@@ -17,6 +17,7 @@ from pymavlink.dialects.v20 import ardupilotmega as mav
 
 from test_competition import link_ready, outputs, LIMITS_FIELD, plan, options  # noqa: F401
 from safak_gorev2.competition.config import Servo
+from safak_gorev2.competition.link import CompetitionLink
 
 
 HOLD = {'mavi': Servo(9, 1800, True, function=58, hold_pwm=1100),
@@ -114,3 +115,24 @@ def test_enabling_without_hold_pwm_is_rejected(options):
                           'kirmizi': Servo(11, 800, True, .3, 1500, function=61)})
     with pytest.raises(ValueError, match='hold_servos_at_startup için hold_pwm gerekli'):
         bad.validate()
+
+
+def test_observe_mode_sends_no_servo_command(cfg, options, plan, tmp_path):
+    """Gözlem modu FC'ye hiçbir komut göndermez; tutma da göndermez."""
+    from safak_gorev2.competition.payload import PayloadLedger
+    from safak_gorev2.mavlink_io import TelemetryStore
+    from conftest import telemetry
+    import threading
+    from unittest.mock import Mock
+    store = TelemetryStore()
+    store.value = telemetry(100)
+    store.mission = plan
+    store.preflight_problem = lambda: None
+    conn = Mock()
+    o = replace(options, actuator='servo', servos=HOLD, hold_servos_at_startup=True)
+    link = CompetitionLink(cfg, store, False, threading.Event(), o,
+                           PayloadLedger(tmp_path, 'observe'), conn)
+    link.servo_params.update(LIMITS_FIELD)
+    link.ingest(outputs(2006, 1495), 100)
+    link._tick(100)
+    assert servo_cmds(conn) == []

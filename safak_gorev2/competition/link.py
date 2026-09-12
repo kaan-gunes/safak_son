@@ -67,6 +67,11 @@ class CompetitionLink(MavlinkLink):
         Bırakma yoluna karışmaz: yük için komut verilmiş, darbe sürüyor veya
         sonuç kaydedilmişse o renk artık burada tutulmaz.
         """
+        # Gözlem modu FC'ye hiçbir komut göndermez; bu kural servo tutma için
+        # de geçerlidir. _hold_servos submit() üzerinden geçmediği için
+        # allow_control burada ayrıca denetlenmek zorunda.
+        if not self.allow_control:
+            return
         if not self.options.hold_servos_at_startup or self.options.actuator != 'servo':
             return
         if self.pending is not None or self.pulse is not None:
