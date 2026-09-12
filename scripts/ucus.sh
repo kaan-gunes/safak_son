@@ -83,7 +83,11 @@ case "$adim" in
              scripts/route_digest.py scripts/ucus_raporu.py scripts/gps_teshis.py \
              scripts/servo_teshis.py scripts/kilit_teshis.py scripts/ucus.sh \
              tests/test_competition.py tests/test_gps_grace.py tests/test_servo_hold.py; do
-      curl -fsSL -o "$f" "$HAM/$f" && echo "  $f" || echo "  ATLANDI: $f"
+      # GitHub raw eski surumu onbellekten verebiliyor; zaman damgasi ve
+      # no-cache basligi bunu engeller. Bu yuzden bir kez sahada eski dosya
+      # indirildi ve betik guncellenmis gorundugu halde eski kod calisti.
+      curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+           -o "$f" "$HAM/$f?t=$(date +%s)" && echo "  $f" || echo "  ATLANDI: $f"
     done
     chmod +x scripts/ucus.sh
     baslik "TESTLER"
