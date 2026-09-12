@@ -11,7 +11,7 @@ import signal
 import sys
 import threading
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from pathlib import Path
 
 import cv2
@@ -23,9 +23,14 @@ from .types import Detection, Frame
 
 
 def create_picamera(cfg: Config):
+    if cfg.camera.backend != "picamera2":
+        raise ValueError("Bu profil Picamera2 kullanamaz; fallback yok")
     from picamera2 import Picamera2
     from libcamera import Transform, controls
     camera = Picamera2()
+    if cfg.camera.identity and camera.camera_properties.get("Model") != cfg.camera.identity:
+        camera.close()
+        raise ValueError("Gerçek kamera kimliği profille uyuşmuyor; fallback yok")
     capture_controls = {"FrameRate": cfg.camera.fps}
     sensor_args = {}
     if cfg.camera.sensor_output_size is not None:
@@ -89,6 +94,11 @@ def run_hailo(cfg: Config, mailbox: LatestFrame, state: SharedState,
         if not Path(hailo_env).is_file():
             raise RuntimeError("Belirtilen Hailo .env dosyası bulunamadı")
         os.environ["HAILO_ENV_FILE"] = str(Path(hailo_env).resolve())
+    from .camera_contract import validate_camera, capture_missing
+    validate_camera(cfg.camera)
+    missing = capture_missing(cfg.camera)
+    if missing:
+        raise ValueError("Kamera: " + "; ".join(missing))
     cfg.verify_model()
     try:
         import gi
@@ -105,7 +115,11 @@ def run_hailo(cfg: Config, mailbox: LatestFrame, state: SharedState,
         raise RuntimeError("Hailo ortamı açılamadı. detection.py'nin çalıştığı ortamı etkinleştirin; CPU'ya geçilmedi. " + str(e)) from e
 
     clock = CaptureClock()
-    calibration = Calibration.load(cfg.camera.calibration_file) if cfg.camera.calibration_file else None
+    state.hailo_samples = deque(maxlen=10000)
+    state.capture_count = 0
+    inference_started = OrderedDict()
+    inference_ms = OrderedDict()
+    calibration = Calibration.load(cfg.camera.calibration_file) if cfg.camera.calibration_file and cfg.camera.backend == "picamera2" else None
     source_stop = threading.Event()
     errors = []
 
@@ -139,6 +153,9 @@ def run_hailo(cfg: Config, mailbox: LatestFrame, state: SharedState,
                 b = item.get_bbox()
                 detections.append(Detection(label, float(item.get_confidence()),
                                   (b.xmin(), b.ymin(), b.xmax(), b.ymax()), class_id))
+            with state.lock:
+                state.hailo_samples.append({"frame_id": identity[0], "captured_at": identity[1],
+                    "result_at": time.monotonic(), "hailo_element_ms": inference_ms.pop(buffer.pts, None)})
             user_data.increment()
             mailbox.put(Frame(identity[0], identity[1], time.monotonic(), image, tuple(detections)))
         except Exception as e:
@@ -173,6 +190,23 @@ def run_hailo(cfg: Config, mailbox: LatestFrame, state: SharedState,
             if Path(infer.get_property("hef-path")).resolve() != Path(cfg.hef_file).resolve():
                 raise RuntimeError("Hailo elemanında yanlış HEF seçili")
             identity.get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, app_callback, self.user_data)
+            def inference_probe(pad, info, started):
+                buffer = info.get_buffer()
+                if buffer is not None:
+                    now = time.monotonic()
+                    if started:
+                        inference_started[buffer.pts] = now
+                        while len(inference_started) > 128:
+                            inference_started.popitem(last=False)
+                    else:
+                        began = inference_started.pop(buffer.pts, None)
+                        if began is not None:
+                            inference_ms[buffer.pts] = (now-began)*1000
+                            while len(inference_ms) > 128:
+                                inference_ms.popitem(last=False)
+                return Gst.PadProbeReturn.OK
+            infer.get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER, inference_probe, True)
+            infer.get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, inference_probe, False)
             loop = GLib.MainLoop()
             bus = self.pipeline.get_bus()
             bus.add_signal_watch()
@@ -191,7 +225,11 @@ def run_hailo(cfg: Config, mailbox: LatestFrame, state: SharedState,
             def capture():
                 camera = None
                 try:
-                    camera = create_picamera(cfg)
+                    if cfg.camera.backend == "v4l2-observe":
+                        from .v4l2_camera import V4L2Camera
+                        camera = V4L2Camera(cfg)
+                    else:
+                        camera = create_picamera(cfg)
                     camera.start()
                     # Lens hareketinin tamamlanması için ilk kareleri kontrol akışına verme.
                     focus_deadline = time.monotonic() + 3.0
@@ -215,7 +253,9 @@ def run_hailo(cfg: Config, mailbox: LatestFrame, state: SharedState,
                                 calibration.verify_stream(cfg.camera.width, cfg.camera.height, model, crop)
                             stream_info = {"model": model, "width": cfg.camera.width,
                                 "height": cfg.camera.height, "scaler_crop": crop,
-                                "mirror": False, "timestamp": "SensorTimestamp"}
+                                "mirror": False, "timestamp": meta.get("TimestampSource", "SensorTimestamp"),
+                                "backend": cfg.camera.backend, "identity": model, "device": cfg.camera.device,
+                                "usb_vid_pid": cfg.camera.usb_vid_pid}
                             if cfg.camera.lens_position is not None:
                                 stream_info.update(lens_position=cfg.camera.lens_position,
                                     focus_mode="manual", sensor_output_size=tuple(cfg.camera.sensor_output_size or ()))
@@ -228,6 +268,7 @@ def run_hailo(cfg: Config, mailbox: LatestFrame, state: SharedState,
                             registered = clock.register(int(sensor_ns))
                             if registered is None:
                                 continue
+                            state.capture_count += 1
                             frame_bgr = request.make_array("main")
                             rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
                             buffer = Gst.Buffer.new_wrapped(rgb.tobytes())

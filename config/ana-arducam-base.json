@@ -1,0 +1,47 @@
+{
+  "camera": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 50,
+    "calibration_file": null,
+    "confidence_min": 0.4,
+    "offset_body_m": null,
+    "target_side_m": 2.0,
+    "lens_position": null,
+    "sensor_output_size": null,
+    "variant": "arducam-ezbox-swift",
+    "backend": "v4l2-observe",
+    "identity": "Arducam_Technology_Co.__Ltd._Arducam-b0559-1080p-swift_SN0001",
+    "device": "/dev/v4l/by-id/usb-Arducam_Technology_Co.__Ltd._Arducam-b0559-1080p-swift_SN0001-video-index0",
+    "usb_vid_pid": "0c40:0559",
+    "pixel_format": "MJPG"
+  },
+  "control": {
+    "target_camera_height_m": 9.0,
+    "center_hold_s": 1.5,
+    "release_hold_s": 3.0,
+    "max_horizontal_speed_mps": 0.4,
+    "max_descent_mps": 0.15,
+    "minimum_camera_height_m": 8.5,
+    "minimum_intercept_relative_alt_m": 9.5,
+    "acquire_s": 0.5
+  },
+  "link": {
+    "device": null
+  },
+  "mission": {
+    "takeoff_mode": "auto",
+    "return_mode": "land",
+    "direct_land_corridor_checked": null
+  },
+  "web": {
+    "host": "0.0.0.0",
+    "port": 8081,
+    "fps": 8,
+    "jpeg_quality": 65,
+    "width": 960
+  },
+  "runtime_dir": "runtime/competition",
+  "hef_file": "best_hailo_model/safakyepyeni.hef",
+  "hef_sha256": "8433d13ecee9d05852178a0f38c057217d5a7f2db4436036b2a978e877c192e2"
+}

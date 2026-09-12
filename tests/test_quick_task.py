@@ -14,26 +14,30 @@ from safak_gorev2.types import Action
 
 def test_quick_entire_two_color_flow_has_no_movement_or_altitude_commands(cfg,options,plan):
     c=ready(cfg,options,plan)
-    mode='AUTO';statuses={};states=[];actions=[];releases=[]
+    mode='AUTO';statuses={};states=[];actions=[];releases=[];seq=2
     for i in range(180):
         at=100+i*.05
         color='mavi' if 'mavi' not in c.done else 'kirmizi'
         # Hiçbir kare metrik hedef sağlamıyor. Hızlı görev PnP olmadan çalışmalı.
-        d=c.step(at,telemetry(at,mode=mode),(candidate(i,at,color),),i,at,plan,release_status=statuses)
+        d=c.step(at,telemetry(at,mode=mode,mission_seq=seq),(candidate(i,at,color),),i,at,plan,release_status=statuses)
         states.append(c.state)
         for a in d.actions:
             actions.append(a.kind)
             if a.kind=='mode': mode=a.values[0]
+            if a.kind=='mission_current': seq=a.values[0]
             if a.kind=='payload':
                 assert mode=='GUIDED'
                 assert c.verify_hold.elapsed >= options.quick_verify_s-1e-9
                 assert c.verify_hold.count >= options.quick_verify_frames
                 releases.append(a.values[:2]);statuses[a.values[0]]='SIMULATED'
-        if c.done=={'mavi','kirmizi'} and c.child is None: break
+        if c.state=='LANDING': break
     assert releases==[('kirmizi','mavi'),('mavi','kirmizi')]
     assert not set(states)&{'INTERCEPT','CLIMB','CENTERING','DESCENDING'}
     assert 'velocity' not in actions
-    assert actions.count('resume')==2 and mode=='AUTO'
+    # İlk yükte kesilen waypointe dönüş, ikinci yükte doğrudan LAND waypointi.
+    assert actions.count('resume')==1 and actions.count('mission_current')==1
+    assert mode=='AUTO' and seq==plan.land_seq
+    assert c.state=='LANDING'
     assert not set(c.requested)-set(c.done)
 
 
@@ -70,7 +74,7 @@ def test_quick_cannot_verify_while_moving(cfg,options,plan):
             assert a.kind not in ('payload','velocity')
             if a.kind=='mode': mode=a.values[0]
         if c.state=='ABORTED': break
-    assert c.state=='ABORTED' and mode=='LOITER'
+    assert c.state=='ABORTED' and mode=='AUTO'
 
 
 @pytest.mark.parametrize('changes',[{'mode':'AUTO'},{'vn':.3},{'vd':.3},{'roll':.3},{'relative_alt_m':1.}])
@@ -86,8 +90,16 @@ def test_quick_link_independently_blocks_moving_or_wrong_mode(cfg,options,plan,t
 
 def test_only_two_current_profiles_and_removed_strategy(cfg):
     files=list(Path('config').glob('*.json'))
-    tasks=[p.name for p in files if 'strategy' in json.loads(p.read_text())]
-    assert sorted(tasks)==['ana-gorev.json','hizli-gorev.json']
+    # Saha denemesi için Pi'de bulunan actuator=simulated *-opencv-test
+    # kopyaları üretim profili envanterine dahil değildir.
+    tasks=[p.name for p in files if 'strategy' in json.loads(p.read_text())
+           and not p.stem.endswith('-opencv-test')]
+    assert set(tasks)=={'ana-gorev.json','ana-imx708.json','ana-arducam.json','ana-aux1-only.json',
+                       'hizli-gorev.json','hizli-saha-20260910.json'}
+    assert {json.loads(p.read_text())['strategy'] for p in files if p.name in tasks} == {'center','quick'}
+    for p in files:
+        if p.stem.endswith('-opencv-test'):
+            assert json.loads(p.read_text()).get('actuator') == 'simulated'
     for name in ('competition-center','competition-sighting','flight-imx708','flight-imx219-new-model','flight.field-candidate','quad'):
         assert not Path('config',name+'.json').exists()
     with pytest.raises(ValueError):
@@ -107,3 +119,22 @@ def test_old_entry_stops_without_loading_hardware():
 def test_quick_import_has_no_tracker_dependency():
     script="import sys; from safak_gorev2.competition.controller import DualController; assert not any('mosse' in k.lower() for k in sys.modules)"
     subprocess.run([sys.executable,'-c',script],check=True,capture_output=True)
+
+
+def test_quick_reacquires_target_that_sweeps_across_frame_while_braking(cfg,options,plan):
+    # 11 Eylül uçuşu: kırmızı hedef fren sırasında kadrajın altından üstüne
+    # kaydı, kutu örtüşmesi koptu ve duruştan sonra hedef sabit olmasına rağmen
+    # doğrulama zaman aşımına uğradı; kırmızı hedefe mavi yük bırakılamadı.
+    c=ready(cfg,options,plan);mode='AUTO';releases=[];braking=0
+    boxes=[(.6,.63,.72,.81),(.6,.47,.7,.6),(.6,.22,.7,.36),(.6,.02,.7,.17)]
+    for i in range(120):
+        at=100+i*.05
+        if c.state=='STOPPING': braking+=1
+        box=boxes[min(braking,len(boxes)-1)] if braking<len(boxes) else (.6,.18,.7,.34)
+        t=telemetry(at,mode=mode,vn=3.5 if braking<len(boxes) else 0.)
+        d=c.step(at,t,(candidate(i,at,'kirmizi',box=box),),i,at,plan,release_status={})
+        for a in d.actions:
+            if a.kind=='mode': mode=a.values[0]
+            if a.kind=='payload': releases.append(a.values[:2])
+        if releases: break
+    assert releases==[('mavi','kirmizi')]

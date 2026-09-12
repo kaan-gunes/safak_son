@@ -9,5 +9,10 @@
   "config/observe-field.json": "archive/legacy-options/config/observe-field.json.txt",
   "config/flight-imx219-new-model.json": "archive/legacy-options/config/flight-imx219-new-model.json.txt",
   "config/flight.field-candidate.json": "archive/legacy-options/config/flight.field-candidate.json.txt",
-  "config/quad.json": "archive/legacy-options/config/quad.json.txt"
+  "config/quad.json": "archive/legacy-options/config/quad.json.txt",
+  "safak_gorev2/config.py": "archive/legacy-options/config-before-dual-camera.py.txt",
+  "safak_gorev2/hailo_backend.py": "archive/legacy-options/hailo_backend-before-dual-camera.py.txt",
+  "safak_gorev2/record.py": "archive/legacy-options/record-before-dual-camera.py.txt",
+  "safak_gorev2/mavlink_io.py": "archive/legacy-options/mavlink_io-before-servo-pulse.py.txt",
+  "safak_gorev2/controller.py": "archive/legacy-options/controller-before-center-hold-gap.py.txt"
 }

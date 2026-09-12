@@ -11,7 +11,7 @@ dependencies = ["Flask>=2.2,<4", "waitress>=3.0,<4", "pymavlink>=2.4.49,<3", "nu
 
 [project.optional-dependencies]
 desktop = ["opencv-python-headless==4.12.0.88", "numpy==2.2.6"]
-test = ["pytest>=8.4,<9"]
+test = ["pytest>=8.4,<9", "imageio-ffmpeg==0.6.0"]
 
 [project.scripts]
 safak-gorev2 = "safak_gorev2.competition.main:main"

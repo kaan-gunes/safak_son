@@ -11,3 +11,8 @@ artifacts/
 
 .venv-model/
 :memory:.ses
+
+# 360 MB ham saha videosu ve onun kopyasi olan dataset zip'i depoya girmez.
+# Dosyalar diskte duruyor; eski kopyalar git gecmisinde zaten mevcut.
+archive/field-videos-20260907/
+finetune_dataset/safak_finetune_dataset.zip

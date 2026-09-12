@@ -5,25 +5,25 @@ import time
 from pathlib import Path
 
 from ..controller import telemetry_problem
-from dataclasses import replace
+from dataclasses import asdict, replace
 
 from waitress import create_server, wasyncore
 from flask import jsonify
 
-from ..hailo_backend import run_hailo
+from ..opencv_backend import run_opencv_camera
 from ..web import create_app
 from .config import Options
 from .runtime import CompetitionRuntime
+from .route import mission_digest
 
 
 def main():
-    parser = argparse.ArgumentParser(description='ŞAFAK — ana merkezleme veya MOSSE’siz hızlı görev')
+    parser = argparse.ArgumentParser(description='ŞAFAK — yalnız OpenCV renk/dörtgen kullanan iki hedef görevi')
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument('--task', choices=('ana','hizli'), help='Ana merkezleme veya durup bırakan hızlı görev')
     selection.add_argument('--config', help='Bu iki görevden biri için sahada doldurulmuş profil')
     parser.add_argument('--mode', choices=('observe','flight'), default='observe')
     parser.add_argument('--check', action='store_true', help='Dosyaları denetle; kamera/USB/servo açma')
-    parser.add_argument('--hailo-env')
     args = parser.parse_args()
     path = args.config or str(Path(__file__).resolve().parents[2]/'config'/f'{args.task}-gorev.json')
     try:
@@ -32,11 +32,15 @@ def main():
         parser.error('Profil açılamadı; yalnız ana/hizli görev destekleniyor: '+str(error))
     missing = options.missing(cfg)
     if args.check:
+        import json
+        from ..camera_contract import camera_manifest
+        print(json.dumps(camera_manifest(cfg.camera), ensure_ascii=False, indent=2))
+        print(f'Strateji: {options.strategy}; aktüatör: {options.actuator}; sortie: {options.sortie_id}')
+        print('Rota: yalnız mission_digest(); MissionPlan.fingerprint kabul edilmez. --check canlı rota okumaz.')
         print('Eksik: '+('; '.join(missing) if missing else 'yok; canlı doğrulama ayrıca gerekli'))
         return 2 if missing else 0
     if args.mode == 'flight' and missing:
         parser.error('Uçuş yapılandırması eksik: '+'; '.join(missing))
-    cfg.verify_model()
     runtime = CompetitionRuntime(cfg,args.mode,options)
     if args.mode == 'flight' and runtime.payload_status:
         runtime.close()
@@ -47,15 +51,22 @@ def main():
         with runtime.state.lock:
             decision = runtime.state.decision
             frame_age = time.monotonic()-runtime.state.frame_at
+            times = tuple(runtime.state.frame_times)
+            vision_fps = (len(times)-1)/(times[-1]-times[0]) if len(times)>1 and times[-1]>times[0] else 0.
+            candidates = [asdict(c) for c in runtime.candidates]
         t = runtime.telemetry.snapshot()
         return jsonify({'strategy':options.strategy,'actuator':options.actuator,
+            'profile_digest':runtime.profile_digest,'camera_contract':runtime.camera_contract,'camera_actual':runtime.state.camera_info,'sortie_id':options.sortie_id,
+            'mission_digest':mission_digest(runtime.telemetry.mission) if runtime.telemetry.mission else None,
             'state':decision.state, 'reason':decision.reason, 'flight_mode':t.mode,
             'frame_fresh':0 <= frame_age <= cfg.control.frame_timeout_s,
+            'camera_requested_fps':cfg.camera.fps,'vision_fps':vision_fps if frame_age<=cfg.control.frame_timeout_s else 0.,
+            'vision_processing_ms':runtime.vision_processing_ms,'candidates':candidates,
             'payloads':runtime.payload_status,'entry_gates_passed':runtime.controller.route.entry_count,
             'finish_passed':runtime.controller.route.finished,'missing':missing})
     def competition_health():
         now = time.monotonic()
-        ready = (args.mode == 'flight' and not missing and runtime.state.backend == 'HAILO'
+        ready = (args.mode == 'flight' and not missing and runtime.state.backend == 'OPENCV'
                  and 0 <= now-runtime.state.frame_at <= cfg.control.frame_timeout_s
                  and not runtime.state.pipeline_error and runtime.link is not None
                  and runtime.link.hardware_problem() is None
@@ -81,11 +92,13 @@ def main():
     def competition_script():
         from flask import Response
         return Response('''
-const labels = {WAIT_AUTO:"AUTO bekleniyor", SEARCHING:"Hedef aranıyor",
+const labels = {WAIT_AUTO:"AUTO bekleniyor", SEARCHING:"Hedef aranıyor", SET_SEARCH_SPEED:"Ana tarama hızı ayarlanıyor",
   REQUEST_STOP:"Durma isteniyor", STOPPING:"Frenleniyor", VERIFYING:"Hedef doğrulanıyor",
   INTERCEPT:"Merkezleme başlıyor", CENTERING:"Hedefe merkezleniyor", DESCENDING:"Alçalıyor",
   RELEASE_WAIT:"Yük komutu bekleniyor", CLIMB:"Tarama irtifasına çıkıyor",
   RESUME_SELECT:"Kesilen waypoint seçiliyor", RESUME_AUTO:"Rotaya dönüyor",
+  SELECT_LAND:"İki yük tamam; LAND waypointi seçiliyor", HANDOFF_LAND:"AUTO inişine devrediliyor",
+  LANDING:"LAND waypointine iniyor",
   AUTO_FINISH:"Bitiş ve iniş rotası", PILOT_CONTROL:"Kontrol pilotta",
   ABORTED:"Görev durduruldu", DONE:"Görev kaydı tamamlandı", INCOMPLETE:"Görev eksik tamamlandı",
   OBSERVING:"Yalnız gözlem; hareket ve bırakma kapalı"};
@@ -101,6 +114,7 @@ setInterval(async()=>{
     el("phase").textContent = labels[s.state] || s.state;
     el("reason").textContent = s.reason;
     el("mode").textContent = "Uçuş modu: "+s.flight_mode+" · "+(s.frame_fresh ? "Görüntü güncel" : "Görüntü güncel değil");
+    el("mode").textContent += " · İşlenen: "+Number(s.vision_fps||0).toFixed(1)+" FPS / kamera isteği: "+s.camera_requested_fps;
     el("payloads").textContent = "Kırmızı yük: "+(s.payloads.kirmizi || "Bekliyor")+
       " · Mavi yük: "+(s.payloads.mavi || "Bekliyor")+
       (s.actuator === "simulated" ? " · TEMSİLİ BIRAKMA" : " · GERÇEK SERVO");
@@ -133,7 +147,7 @@ setInterval(async()=>{
     print(f'Görev: {"ANA" if options.strategy == "center" else "HIZLI"} / {options.actuator}; panel portu {cfg.web.port}',flush=True)
     failed = False
     try:
-        run_hailo(cfg,runtime.mailbox,runtime.state,runtime.stop,args.hailo_env)
+        run_opencv_camera(cfg,runtime.mailbox,runtime.state,runtime.stop)
     except Exception as e:
         failed = True
         runtime.state.pipeline_error = str(e)

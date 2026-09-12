@@ -1,10 +1,12 @@
 import time
+from collections import deque
 
 from ..controller import telemetry_problem
 from ..mavlink_io import MavlinkLink
 from ..types import Action
 from .config import PAYLOAD
-from .route import inside, mission_digest
+from ..camera_contract import metric_missing
+from .route import area_allowed, mission_digest
 
 
 class CompetitionLink(MavlinkLink):
@@ -15,6 +17,40 @@ class CompetitionLink(MavlinkLink):
         self.pending = None
         self.servo_params = {}
         self.route_authorized = False
+        self.pulse = None
+        self.search_speed_status = None
+        self.search_speed_sent_at = None
+        self.search_speed_request_at = None
+        self.fc_messages = deque(maxlen=30)
+
+    def control_fallback_mode(self):
+        # Kumanda AUTO'da kalırken LOITER'a zorlamak, gaz kolu düşükse sert
+        # alçalış üretiyor. Yarışma akışı yalnız onaylı AUTO rotasına döner.
+        return 'AUTO'
+
+    def _neutralize(self, now):
+        pulse = self.pulse
+        if pulse is None:
+            return
+        s = self.options.servos[pulse['color']]
+        # Yalnız başlattığımız darbenin durdurulması; pilot devri/lease kaybında da gerekli.
+        self._command(183, s.channel, s.neutral_pwm)
+        self.pulse = None
+        if self.pending is not None:
+            p = self.pending
+            p['release_ok'] = p['ack'] and p['output']
+            p.update(at=now, ack=False, output=False, neutral=True)
+
+    def _tick(self, now):
+        if self.pulse is not None and now >= self.pulse['until']:
+            self._neutralize(now)
+        if self.pending is not None and now-self.pending['at'] > self.options.release_ack_timeout_s:
+            self._neutralize(now)
+            self._status(self.pending['color'], 'UNCERTAIN')
+            self.pending = None
+
+    def _shutdown_outputs(self):
+        self._neutralize(time.monotonic())
 
     def quick_release_stopped(self, t):
         return (t.horizontal_speed <= self.options.stop_speed_mps
@@ -26,11 +62,20 @@ class CompetitionLink(MavlinkLink):
         with self.store.lock:
             return dict(self.payload_status)
 
+    def snapshot_search_speed_status(self):
+        with self.store.lock:
+            return {'status': self.search_speed_status, 'request_at': self.search_speed_request_at}
+
+    def snapshot_fc_messages(self):
+        with self.store.lock:
+            return list(self.fc_messages)
+
     def _initial_requests(self):
         super()._initial_requests()
         if self.options.actuator == 'servo':
             self._command(511, 36, 100000)
-            for s in self.options.servos.values():
+            for color in self.options.payloads:
+                s = self.options.servos[color]
                 if s.channel is not None:
                     for suffix in ('FUNCTION','MIN','MAX'):
                         name = f'SERVO{s.channel}_{suffix}'
@@ -38,27 +83,37 @@ class CompetitionLink(MavlinkLink):
                             self.cfg.link.target_component, name.encode(), -1)
 
     def hardware_problem(self):
+        speed = self.store.params.get('WPNAV_SPEED')
+        # Kullanıcı kararı 11 Eylül: saha süresi nedeniyle iki görevde de 1000 cm/s.
+        # Bu hızda fren yaklaşık 3 s sürer; duruş/doğrulama mantığı buna göre
+        # hedefi yeniden yakalar. Üst sınır FC preflight'ıyla aynı: 1000 cm/s.
+        speed_limit = 1000
+        if speed is not None and not 0 < speed <= speed_limit:
+            return f'WPNAV_SPEED {self.options.strategy} görev için 1–{speed_limit} cm/s aralığında olmalı'
         if self.options.actuator == 'simulated':
             return None
-        for color, s in self.options.servos.items():
+        for color in self.options.payloads:
+            s = self.options.servos[color]
             if not s.bench_verified or s.channel is None or s.release_pwm is None:
                 return color+' servo fiziksel eşlemesi eksik'
             prefix = f'SERVO{s.channel}_'
-            if self.servo_params.get(prefix+'FUNCTION') != 0:
-                return prefix+'FUNCTION=0 okunmalı; motor/atanmış çıkışa yazılmaz'
+            if self.servo_params.get(prefix+'FUNCTION') != s.function:
+                return prefix+f'FUNCTION={s.function} okunmalı; tezgâh eşlemesi değişmiş'
             lower, upper = self.servo_params.get(prefix+'MIN'), self.servo_params.get(prefix+'MAX')
             if lower is None or upper is None or not lower <= s.release_pwm <= upper:
                 return color+' PWM otopilot çıkış sınırlarında doğrulanmadı'
+            if s.neutral_pwm is not None and not lower <= s.neutral_pwm <= upper:
+                return color+' nötr PWM otopilot sınırlarında değil'
         return None
 
     def _safe(self, now, mode):
         t = self.store.snapshot()
         m = self.store.mission
-        return (self.allow_control and not self.failure and not self.store.pilot_override
+        return (not metric_missing(self.cfg.camera) and self.allow_control and not self.failure and not self.store.pilot_override
                 and self.store.preflight_problem() is None and telemetry_problem(t, now, self.cfg) is None
                 and t.mode == mode and t.rc_selected_mode == 'AUTO'
                 and m is not None and mission_digest(m) == self.options.mission_fingerprint
-                and inside(self.options.flight_polygon, (t.lat,t.lon)))
+                and area_allowed(self.options, (t.lat,t.lon)))
 
     def _status(self, color, status):
         self.ledger.update(color, status)
@@ -70,6 +125,14 @@ class CompetitionLink(MavlinkLink):
         if msg.get_srcSystem() != self.cfg.link.target_system or msg.get_srcComponent() != self.cfg.link.target_component:
             return
         kind = msg.get_type()
+        if kind == 'STATUSTEXT' and self.options.strategy == 'center':
+            with self.store.lock:
+                self.fc_messages.append({'at': now, 'severity': msg.severity, 'text': msg.text})
+        if (kind == 'COMMAND_ACK' and msg.command == 178 and self.search_speed_sent_at is not None
+                and now > self.search_speed_sent_at):
+            with self.store.lock:
+                self.search_speed_status = 'ACCEPTED' if msg.result == 0 else 'REJECTED'
+            self.search_speed_sent_at = None
         if kind == 'HEARTBEAT':
             self.store.autopilot_confirmed = msg.autopilot == 3 and msg.type == self.options.vehicle_type
         if kind == 'MISSION_ITEM_INT' and msg.seq > 0:
@@ -80,7 +143,8 @@ class CompetitionLink(MavlinkLink):
                 self.store.update(link_error=self.failure)
         if kind == 'PARAM_VALUE':
             name = msg.param_id.decode().rstrip('\0') if isinstance(msg.param_id, bytes) else msg.param_id.rstrip('\0')
-            allowed = {f'SERVO{s.channel}_{suffix}' for s in self.options.servos.values()
+            allowed = {f'SERVO{self.options.servos[color].channel}_{suffix}'
+                       for color in self.options.payloads
                        for suffix in ('FUNCTION','MIN','MAX')}
             if name in allowed:
                 self.servo_params[name] = msg.param_value
@@ -88,6 +152,7 @@ class CompetitionLink(MavlinkLink):
         if pending is None:
             return
         if now-pending['at'] > self.options.release_ack_timeout_s:
+            self._neutralize(now)
             self._status(pending['color'], 'UNCERTAIN')
             self.pending = None
             return
@@ -98,25 +163,46 @@ class CompetitionLink(MavlinkLink):
             if msg.result == 0:
                 pending['ack'] = True
             elif msg.result != 5:  # IN_PROGRESS: nihai cevap beklenir.
+                self._neutralize(now)
                 self._status(pending['color'], 'REJECTED')
                 self.pending = None
                 return
         if kind == 'SERVO_OUTPUT_RAW' and msg.port == 0 and now > pending['at']:
             s = self.options.servos[pending['color']]
-            pending['output'] = getattr(msg, f'servo{s.channel}_raw', None) == s.release_pwm
+            expected = s.neutral_pwm if pending.get('neutral') else s.release_pwm
+            pending['output'] = getattr(msg, f'servo{s.channel}_raw', None) == expected
         if pending['ack'] and pending['output']:
-            self._status(pending['color'], 'ACK_ACCEPTED')
+            if self.pulse is not None:
+                return
+            self._status(pending['color'], 'ACK_ACCEPTED' if pending.get('release_ok', True) else 'UNCERTAIN')
             self.pending = None
 
     def _perform(self, now, actions):
         if not self.allow_control:
             return
         for a in actions:
-            if a.kind == 'resume':
+            if a.kind == 'search_speed':
+                speed, slot = a.values
+                t = self.store.snapshot()
+                if (self.options.strategy == 'center' and self.options.center_search_speed_mps is not None
+                        and speed == self.options.center_search_speed_mps and slot == t.rc_slot
+                        and self._safe(now, 'AUTO') and self.hardware_problem() is None
+                        and t.mission_seq is not None
+                        and self.store.mission.takeoff_seq <= t.mission_seq <= self.options.search_end_seq):
+                    with self.store.lock:
+                        self.search_speed_status = 'PENDING'
+                        self.search_speed_request_at = now
+                    self.search_speed_sent_at = now
+                    self._command(178, 1, speed, -1, 0)
+                else:
+                    with self.store.lock:
+                        self.search_speed_status = 'REJECTED'
+                        self.search_speed_request_at = now
+            elif a.kind == 'resume':
                 seq, fingerprint = a.values
                 m = self.store.mission
                 if (self._safe(now, 'GUIDED') and self.owned and self.store.snapshot().rc_slot == self.claim_slot
-                        and m and fingerprint == m.fingerprint
+                        and m and fingerprint == mission_digest(m)
                         and self.options.search_start_seq <= seq <= self.options.search_end_seq
                         and m.current_command(seq) == 16):
                     self.connection.mav.mission_set_current_send(self.cfg.link.target_system,
@@ -126,7 +212,7 @@ class CompetitionLink(MavlinkLink):
                 if color in self.payload_status or self.pending is not None:
                     continue
                 t = self.store.snapshot()
-                permitted = (PAYLOAD.get(target) == color and self.route_authorized
+                permitted = (color in self.options.payloads and PAYLOAD.get(target) == color and self.route_authorized
                     and self._safe(now, mode) and self.hardware_problem() is None
                     and t.mission_seq is not None
                     and self.options.search_start_seq <= t.mission_seq <= self.options.search_end_seq
@@ -157,6 +243,8 @@ class CompetitionLink(MavlinkLink):
                     continue
                 s = self.options.servos[color]
                 self.pending = {'color':color, 'at':sent_at, 'ack':False, 'output':False}
+                if s.pulse_s is not None:
+                    self.pulse = {'color':color, 'until':sent_at+s.pulse_s}
                 with self.store.lock:
                     self.payload_status[color] = 'SENT'
                 self._command(183, s.channel, s.release_pwm)
@@ -165,6 +253,6 @@ class CompetitionLink(MavlinkLink):
                 if ((a.kind == 'mode' and a.values == ('GUIDED', 'AUTO') or a.kind == 'stop') and self.owned
                         and self.options.strategy in ('center', 'quick') and self._safe(now, 'AUTO')):
                     # Mod cevabı gelirken karar döngüsü dursa bile GUIDED boş hızla kalmasın.
-                    # Üst sınıf göndericisi yalnız GUIDED'de uygular; süre aşımında LOITER'a bırakır.
+                    # Üst sınıf göndericisi yalnız GUIDED'de uygular; süre aşımında AUTO'ya bırakır.
                     self.velocity = (0., 0., 0.)
                     self.velocity_until = now + self.cfg.link.command_lease_s

@@ -23,7 +23,8 @@ MODE_IDS = {"AUTO": 3, "GUIDED": 4, "LOITER": 5, "RTL": 6, "LAND": 9}
 # ArduCopter modlarını (ör. yerde STABILIZE) gerçek adlarıyla gösterir.
 MODE_NAMES = dict(mavutil.mode_mapping_acm)
 PARAMETERS = ("MIS_RESTART", "GUID_TIMEOUT", "FLTMODE_CH", "FS_THR_ENABLE",
-              "FLTMODE1", "FLTMODE2", "FLTMODE3", "FLTMODE4", "FLTMODE5", "FLTMODE6")
+              "FLTMODE1", "FLTMODE2", "FLTMODE3", "FLTMODE4", "FLTMODE5", "FLTMODE6",
+              "WPNAV_SPEED")
 STREAMS = {30: 20, 32: 20, 33: 10, 24: 5, 193: 5, 65: 10, 1: 2, 245: 2, 42: 2}
 
 
@@ -122,6 +123,8 @@ class TelemetryStore:
                 return "GUID_TIMEOUT 0–3 saniye aralığında doğrulanmadı"
             if self.params["FS_THR_ENABLE"] == 0:
                 return "RC kaybı failsafe'i kapalı"
+            if not 0 < self.params["WPNAV_SPEED"] <= 1000:
+                return "WPNAV_SPEED 1–1000 cm/s aralığında olmalı"
             if not 1 <= self.params["FLTMODE_CH"] <= 18:
                 return "FLTMODE_CH geçerli bir RC kanalı değil"
             if not self.mission:
@@ -168,6 +171,10 @@ class MavlinkLink:
         except queue.Full:
             self.failure = "Komut kuyruğu doldu"
             self.store.update(link_error=self.failure)
+
+    def control_fallback_mode(self) -> str:
+        """Kontrol kirası biterse kullanılacak uçuş modu; alt sınıf daraltabilir."""
+        return "LOITER"
 
     def _send_velocity(self, v) -> None:
         # BODY_OFFSET_NED hız eksenleri başlığa göredir; sıfır yaw rate, yaw sabit.
@@ -357,6 +364,12 @@ class MavlinkLink:
                         self.cfg.link.target_component, name.encode(), -1)
         self.connection.mav.mission_request_list_send(self.cfg.link.target_system, self.cfg.link.target_component)
 
+    def _tick(self, now: float) -> None:
+        pass
+
+    def _shutdown_outputs(self) -> None:
+        pass
+
     def run(self) -> None:
         try:
             if self.connection is None:
@@ -373,6 +386,7 @@ class MavlinkLink:
             initialized = False
             while not self.stop.is_set():
                 now = time.monotonic()
+                self._tick(now)
                 # Yoğun telemetri, RC okumasını veya komut son kullanma kontrolünü aç bırakmaz.
                 for _ in range(60):
                     msg = self.connection.recv_match(blocking=False)
@@ -425,7 +439,8 @@ class MavlinkLink:
                     if now > self.velocity_until or self.failure:
                         self._send_velocity((0., 0., 0.))
                         if t.rc_slot == self.claim_slot and t.system_status == 4:
-                            self.connection.mav.set_mode_send(self.cfg.link.target_system, 1, MODE_IDS["LOITER"])
+                            fallback = self.control_fallback_mode()
+                            self.connection.mav.set_mode_send(self.cfg.link.target_system, 1, MODE_IDS[fallback])
                         self.owned, self.velocity = False, None
                         self.store.update(link_error="Kontrol döngüsü komut süresini aştı")
                     elif now - self.last_velocity_sent >= 0.05:
@@ -439,9 +454,11 @@ class MavlinkLink:
             if self.connection is not None:
                 t = self.store.snapshot()
                 try:
+                    self._shutdown_outputs()
                     if (self.allow_control and self.owned and t.mode == "GUIDED"
                         and not self.store.pilot_override and t.rc_slot == self.claim_slot):
                         self._send_velocity((0., 0., 0.))
-                        self.connection.mav.set_mode_send(self.cfg.link.target_system, 1, MODE_IDS["LOITER"])
+                        fallback = self.control_fallback_mode()
+                        self.connection.mav.set_mode_send(self.cfg.link.target_system, 1, MODE_IDS[fallback])
                 finally:
                     self.connection.close()

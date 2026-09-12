@@ -9,6 +9,12 @@ from pathlib import Path
 
 @dataclasses.dataclass(frozen=True)
 class CameraConfig:
+    variant: str | None = None
+    backend: str = "picamera2"
+    identity: str | None = None
+    device: str | None = None
+    usb_vid_pid: str | None = None
+    pixel_format: str | None = None
     width: int = 1280
     height: int = 720
     fps: int = 30
@@ -40,6 +46,9 @@ class ControlConfig:
     release_hold_s: float = 3.0
     center_tolerance_m: float = 0.20
     descent_center_tolerance_m: float = 0.30
+    # PnP saçılması yükseklikle büyür: yüksekte kilit için tolerans yüksekliğin
+    # bu oranı kadar genişler, bırakma yüksekliğinde sabit değere geri döner.
+    center_tolerance_height_ratio: float = 0.05
     release_horizontal_speed_mps: float = 0.20
     release_vertical_speed_mps: float = 0.12
     release_tilt_deg: float = 8.0
@@ -132,6 +141,8 @@ class Config:
         return config
 
     def validate(self) -> None:
+        from .camera_contract import validate_camera
+        validate_camera(self.camera)
         if self.mission.return_mode not in ("land", "rtl"):
             raise ValueError("return_mode land veya rtl olmalı")
         if self.mission.takeoff_mode not in ("auto", "manual"):

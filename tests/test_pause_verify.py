@@ -64,10 +64,13 @@ def test_reject_resumes_same_waypoint_without_payload(cfg, options, plan, failur
     seen, resume, mode = [], [], 'GUIDED'
     for i in range(3, 100):
         now = 100+i*.05
+        # Sıçrama duruştan SONRA sınanır: frenlerken hedefin kadrajda kayması
+        # normaldir ve yeniden yakalanır, doğrulama aşamasında ise kabul edilmez.
+        jumped = failure == 'jump' and c.state == 'VERIFYING'
         xs = () if failure == 'no_target' else (candidate(i,now,
             color='kirmizi' if failure == 'wrong_color' else 'mavi',
             metric=failure in ('jump','intermittent'),
-            box=(.01,.01,.1,.1) if failure == 'jump' else (.3,.2,.7,.8)),)
+            box=(.01,.01,.1,.1) if jumped else (.3,.2,.7,.8)),)
         if failure == 'intermittent' and i%2:
             xs = ()
         d = c.step(now, telemetry(now,mode=mode), xs, i, now, plan)
@@ -129,6 +132,7 @@ def test_braking_timeout_aborts_without_center_or_release(cfg, options, plan):
         if c.state == 'ABORTED': break
     assert c.state == 'ABORTED'
     assert [a.kind for a in d.actions] == ['stop','mode','revoke']
+    assert d.actions[1].values == ('AUTO','GUIDED')
 
 
 def test_camera_failure_during_verification_aborts_instead_of_resume(cfg, options, plan):
@@ -150,16 +154,16 @@ def test_controller_stall_during_braking_aborts(cfg, options, plan):
     assert [a.kind for a in d.actions] == ['stop','mode','revoke']
 
 
-def test_raw_candidate_survives_missing_pose_or_rejected_geometry(cfg):
+def test_frame_detection_metadata_never_becomes_opencv_candidate(cfg):
     f = Frame(1,100.,100.,np.zeros((720,1280,3),np.uint8),
               (Detection('mavi_hedef',.9,(.3,.2,.7,.8)),),'TEST')
     vision = DualVision(cfg)
     xs, _ = vision.detect(f)
-    assert len(xs) == 1 and xs[0].metric is None
+    assert not xs
     vision.geometry['mavi'] = Mock()
     vision.geometry['mavi'].detect.return_value = ()
     xs, _ = vision.detect(f,pose=Mock())
-    assert len(xs) == 1 and xs[0].metric is None
+    assert not xs
 
 
 def test_mode_transition_arms_zero_velocity_watchdog(cfg, options, plan, tmp_path):
@@ -171,3 +175,64 @@ def test_mode_transition_arms_zero_velocity_watchdog(cfg, options, plan, tmp_pat
     link.store.value = telemetry(100.1)
     link._perform(100.1,(Action('stop'),))
     assert link.velocity_until == 100.1+cfg.link.command_lease_s
+    assert link.control_fallback_mode() == 'AUTO'
+
+
+def test_center_reacquires_target_that_sweeps_across_frame_while_braking(cfg, options, plan):
+    # 11 Eylül ana uçuşu: fren sırasında hedef kadrajda kayınca kutu örtüşmesi
+    # kopuyordu; duruştan sonra hedef sabit olsa da doğrulama başlamıyordu.
+    c = stopped_controller(cfg, options, plan)
+    boxes = [(.6,.63,.72,.81),(.6,.47,.7,.6),(.6,.22,.7,.36),(.6,.02,.7,.17)]
+    braking, began, mode = 0, None, 'GUIDED'
+    for i in range(3, 80):
+        now = 100+i*.05
+        if c.state == 'STOPPING': braking += 1
+        moving = braking < len(boxes)
+        box = boxes[min(braking,len(boxes)-1)] if moving else (.6,.18,.7,.34)
+        d = c.step(now, telemetry(now,mode=mode,vn=1.5 if moving else 0.),
+                   (candidate(i,now,metric=True,box=box),), i, now, plan)
+        for a in d.actions:
+            if a.kind == 'mode': mode = a.values[0]
+            if a.kind == 'velocity' and began is None: began = now
+        if began: break
+    assert began is not None and c.state in ('INTERCEPT','CLIMB','CENTERING')
+
+
+def run_center_verify(cfg, options, plan, metric_every=1, blip_every=0, steps=80):
+    """Duruş sonrası doğrulama: PnP her karede çözülmeyebilir, hız kısa sıçrayabilir."""
+    c = stopped_controller(cfg, options, plan)
+    began, mode, k, braking = None, 'GUIDED', 0, 0
+    for i in range(3, steps):
+        now = 100+i*.05
+        if c.state in ('REQUEST_STOP','STOPPING'): braking += 1
+        stopping = braking <= 2
+        if not stopping: k += 1
+        metric = stopping or k % metric_every == 0
+        speed = 1.5 if stopping else (.35 if blip_every and k % blip_every == 0 else 0.)
+        d = c.step(now, telemetry(now,mode=mode,vn=speed),
+                   (candidate(i,now,metric=metric),), i, now, plan)
+        for a in d.actions:
+            if a.kind == 'mode': mode = a.values[0]
+            if a.kind == 'velocity' and began is None: began = now
+        if began or c.state == 'SEARCHING': break
+    return c, began
+
+
+def test_center_verifies_when_pnp_solves_only_some_frames(cfg, options, plan):
+    # Gerçek uçuşta metrik geometri karelerin yaklaşık dörtte birinde çözüldü;
+    # eski kod her geometrisiz karede birikimi sildiği için 0,5 s hiç dolmadı.
+    c, began = run_center_verify(cfg, options, plan, metric_every=4)
+    assert began is not None and c.state in ('INTERCEPT','CLIMB','CENTERING')
+
+
+def test_center_verifies_despite_short_speed_blips(cfg, options, plan):
+    # GUIDED sürüklenmesi arada 0,2 m/s eşiğini aşıyor; tek kare sayılmaz ama
+    # toplanan ölçüm silinmez.
+    c, began = run_center_verify(cfg, options, plan, blip_every=10)
+    assert began is not None and c.state in ('INTERCEPT','CLIMB','CENTERING')
+
+
+def test_center_still_rejects_when_geometry_gap_too_long(cfg, options, plan):
+    # 0,4 s'lik boşluk max_lock_frame_gap_s sınırını aşar; kanıt zinciri kopar.
+    c, began = run_center_verify(cfg, options, plan, metric_every=8)
+    assert began is None and c.state == 'SEARCHING'

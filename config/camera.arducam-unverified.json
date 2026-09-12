@@ -1,0 +1,12 @@
+{
+  "status": "unverified-not-a-calibration",
+  "camera_variant": "arducam-ezbox-swift",
+  "camera_identity": null,
+  "backend": "v4l2-observe",
+  "camera_matrix": null,
+  "distortion": null,
+  "physical_distance_verified": false,
+  "mount_yaw_deg": null,
+  "offset_body_m": null,
+  "note": "Kalibrasyon değildir; calibration_file null kalır. Gerçek sensör/lens/crop/kimlik ve montaj ölçümü bekleniyor."
+}

@@ -1,0 +1,35 @@
+[
+  {
+    "from": "anlık test",
+    "to": "archive/field-videos-20260907",
+    "files": {
+      "video-0003.avi": "179181cd6d70e5ab68b7de9c3410e3a4cc4574ba05bed1c144305af4a8c90805",
+      ".DS_Store": "b9bec5279639acc4b89c0285612ee29d2878b69eb71260fb8124e68e00bda051",
+      "video-0004.avi": "eb2e4c7682063dece68e3419288a219451c6debaba6b44587988f61d2c04d050",
+      "video-0005.avi": "8b37d8485ccddfc79ae5d09770a3a10b96053702e3d1934609ae737c91258d55",
+      "video-0007.avi": "efdb03802b54d5bbe351854430972ef472c12b96ef47e7a6f863edd84b9272ac",
+      "video-0006.avi": "b003f1995561f36e70ffef2c66137508bd78305907b60f48e24bfa5c72bc26c7",
+      "video-0008.avi": "a11ffe0ff7f4769b7f480fad24e1a3c95537ea159e83382f651c80fbeaed2a0a",
+      "tespit_videolari/video-0005_tespit.mp4": "27de9e63a5ba075497b48470a26081b2179588ea0cb22c6bfa2aebe2999b9380",
+      "tespit_videolari/video-0008_tespit.mp4": "c20b80f957dfb3dd7528f1040b95c557915f93d4bdb43c8c3f0cd78c8047f5d6",
+      "tespit_videolari/video-0007_tespit.mp4": "0dfc3f9c00e0a1010830a0c40b85a8d4f687f6897bfeec4f7263269d99e176e8",
+      "tespit_videolari/video-0004_tespit.mp4": "18723cd3f2fa25bc9e85d5fe7d7a2759e327cc2e5d5fcc7ddd64622e50e44973",
+      "tespit_videolari/video-0003_tespit.mp4": "0f560fd2203f2fcb2be2d6635cdeef1ea559948d1774141997fa395a91d167e0",
+      "tespit_videolari/video-0006_tespit.mp4": "079442da43524b8879349907e38f53c75b61bc97a06de5b5cafbf3e812779e2e"
+    }
+  },
+  {
+    "from": "safak_finetune_dataset.zip",
+    "to": "finetune_dataset/safak_finetune_dataset.zip",
+    "files": {
+      "safak_finetune_dataset.zip": "00b45313dfc737618ce0a1b1bb8a6a3267511783a766fa6ea4a29896733ddf68"
+    }
+  },
+  {
+    "from": ":memory:.ses",
+    "to": "archive/local-cleanup-20260908/memory.ses",
+    "files": {
+      ":memory:.ses": "35216c375920af24af0127dc06e3ab3693fc7060cc87b8dd71c14944c1d3c645"
+    }
+  }
+]

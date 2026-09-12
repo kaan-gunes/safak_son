@@ -63,6 +63,19 @@ def test_wrong_system_heartbeat_ignored(cfg):
     assert not store.autopilot_confirmed
 
 
+def test_preflight_rejects_out_of_range_waypoint_speed():
+    from safak_gorev2.mavlink_io import PARAMETERS
+    store=TelemetryStore()
+    store.autopilot_confirmed=True
+    store.value=telemetry(time.monotonic())
+    store.mission=object()
+    store.params={name: 1 for name in PARAMETERS}
+    store.params.update(MIS_RESTART=0,GUID_TIMEOUT=3,FS_THR_ENABLE=1,FLTMODE_CH=5,WPNAV_SPEED=1200)
+    assert store.preflight_problem() == 'WPNAV_SPEED 1–1000 cm/s aralığında olmalı'
+    store.params['WPNAV_SPEED']=1000
+    assert store.preflight_problem() is None
+
+
 def test_timesync_matches_boot_time_not_receive_time(cfg):
     store = TelemetryStore()
     link = MavlinkLink(cfg, store, False, threading.Event(), Mock())

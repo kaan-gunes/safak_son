@@ -13,6 +13,17 @@ def mission_digest(mission):
     return hashlib.sha256(json.dumps(items,sort_keys=True).encode()).hexdigest()
 
 
+def mission_digest_problem(mission, expected):
+    if mission is None:
+        return 'Görev okunamadı'
+    actual = mission_digest(mission)
+    if actual == expected:
+        return None
+    detail = ('MissionPlan.fingerprint kullanılmış; ' if expected == mission.fingerprint else '')
+    return ('Rota parmak izi onaylanan rotayla eşleşmiyor: ' + detail +
+            'yalnız mission_digest() kullanın; rota/irtifa değiştiyse yeniden okuyup onaylayın')
+
+
 def cross(a, b):
     return a[0]*b[1] - a[1]*b[0]
 
@@ -47,6 +58,12 @@ def inside(polygon, point):
     return result
 
 
+def area_allowed(options, point):
+    # Mission kapsamı kullanıcı tarafından açıkça seçilir; eski saha geometrisi
+    # bu modda uygulanmaz. FC'nin kendi fence/rota denetimleri değiştirilmez.
+    return options.search_scope == 'mission' or inside(options.flight_polygon, point)
+
+
 class RouteProgress:
     def __init__(self, options):
         self.options = options
@@ -57,7 +74,8 @@ class RouteProgress:
 
     @property
     def entered(self):
-        return bool(self.options.entry_gates) and self.entry_count == len(self.options.entry_gates)
+        return (self.options.search_scope == 'mission' or
+                bool(self.options.entry_gates) and self.entry_count == len(self.options.entry_gates))
 
     def update(self, t, now, timeout):
         if self.last_at == t.global_at:
@@ -70,7 +88,8 @@ class RouteProgress:
                 if crossed(self.options.entry_gates[self.entry_count], self.previous, point):
                     self.entry_count += 1
             if self.entered and t.mission_seq is not None and self.options.search_end_seq is not None:
-                if t.mission_seq > self.options.search_end_seq and crossed(self.options.finish_gate, self.previous, point):
+                if t.mission_seq > self.options.search_end_seq and (self.options.search_scope == 'mission'
+                        or crossed(self.options.finish_gate, self.previous, point)):
                     self.finished = True
         self.previous = point if fresh and t.armed and t.mode == 'AUTO' else None
         self.last_at = t.global_at
@@ -82,4 +101,4 @@ class RouteProgress:
                 and o.search_start_seq is not None and o.search_end_seq is not None
                 and t.mission_seq is not None and o.search_start_seq <= t.mission_seq <= o.search_end_seq
                 and mission.current_command(t.mission_seq) == 16
-                and inside(o.flight_polygon, (t.lat, t.lon)))
+                and area_allowed(o, (t.lat, t.lon)))

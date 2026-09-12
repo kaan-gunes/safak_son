@@ -1,0 +1,52 @@
+{
+  "base_config": "competition-base.json",
+  "strategy": "center",
+  "camera_mount_yaw_deg": 180,
+  "actuator": "simulated",
+  "vehicle_type": 13,
+  "sortie_id": "20260911T175207Z-ana-opencv-test",
+  "mission_fingerprint": "5172119333982636e3c2498f130d4ee2ea11c0db41eecd5cf62e4bc7d3f7bfae",
+  "search_start_seq": 2,
+  "search_end_seq": 6,
+  "route_reviewed": true,
+  "entry_gates": [],
+  "finish_gate": [],
+  "flight_polygon": [],
+  "tracking": {
+    "enabled": true,
+    "debug": false,
+    "confirmation_frames": 2,
+    "max_tracking_frames": 3,
+    "max_missed_frames": 8,
+    "history_size": 8,
+    "max_gap_s": 0.25,
+    "bridge_search": true
+  },
+  "quick_frames": 3,
+  "quick_hold_s": 0.1,
+  "quick_iou": 0.25,
+  "stop_speed_mps": 0.2,
+  "stop_hold_s": 0.3,
+  "stop_timeout_s": 5.0,
+  "verify_timeout_s": 8.0,
+  "retry_delay_s": 5.0,
+  "release_ack_timeout_s": 2.0,
+  "servos": {
+    "mavi": {
+      "channel": 9,
+      "release_pwm": 1800,
+      "bench_verified": true,
+      "function": 58
+    },
+    "kirmizi": {
+      "channel": 11,
+      "release_pwm": 800,
+      "bench_verified": true,
+      "pulse_s": 0.3,
+      "neutral_pwm": 1500,
+      "function": 61
+    }
+  },
+  "search_scope": "mission",
+  "center_search_speed_mps": 2.5
+}

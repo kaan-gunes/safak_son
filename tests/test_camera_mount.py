@@ -8,7 +8,7 @@ from safak_gorev2.competition.config import Options, SIDES
 from safak_gorev2.competition.vision import DualVision
 from safak_gorev2.demo import demo_calibration
 from safak_gorev2.geometry import body_to_ned
-from safak_gorev2.types import Detection, Frame, PoseSample
+from safak_gorev2.types import Frame, PoseSample
 
 
 @pytest.mark.parametrize('mount', [0, 180])
@@ -34,7 +34,7 @@ def test_mounted_camera_recovers_ground_position(cfg, mount, color, angles):
     image = np.full((720,1280,3), 70, np.uint8)
     cv2.fillConvexPoly(image, q.astype(np.int32), (220,65,30) if color=='mavi' else (30,65,220))
     box = tuple(np.r_[q.min(axis=0), q.max(axis=0)]/[1280,720,1280,720])
-    frame = Frame(1,100.,100.02,image,(Detection(color+'_hedef',.94,box,2),))
+    frame = Frame(1,100.,100.02,image,(),backend='OPENCV')
     pose = PoseSample(100.,*angles,*vehicle)
     vision = DualVision(cfg, cal, mount)
     candidates, _ = vision.detect(frame,pose,'center')
@@ -42,9 +42,10 @@ def test_mounted_camera_recovers_ground_position(cfg, mount, color, angles):
     target = candidates[0].metric
     assert (target.north,target.east,target.ground_down)==pytest.approx(ground,abs=.09)
     assert target.camera_height_m == pytest.approx(-(vehicle+r@np.array(cfg.camera.offset_body_m))[2],abs=.09)
-    # Hızlı görevde montajdan bağımsız, ham AI kutusu korunur; metrik hedef yok.
+    # Hızlı görevde montajdan bağımsız OpenCV kutusu var; metrik hedef yok.
     quick, _ = vision.detect(frame,pose,'quick')
-    assert quick[0].bbox==box and quick[0].metric is None
+    assert quick[0].bbox == pytest.approx(box,abs=2/720)
+    assert quick[0].source == 'opencv' and quick[0].metric is None
 
 
 @pytest.mark.parametrize('task', ['ana', 'hizli'])
@@ -54,7 +55,7 @@ def test_active_profiles_use_reported_mount(task):
     assert options.camera_mount_yaw_deg==180
 
 
-@pytest.mark.parametrize('value', [90, -180, None, True, '180'])
+@pytest.mark.parametrize('value', [90, -180, True, '180'])
 def test_unsupported_mount_is_rejected(value):
     with pytest.raises(ValueError,match='kamera montajı'):
         replace(Options(),camera_mount_yaw_deg=value).validate()

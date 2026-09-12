@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import replace
 
 import numpy as np
@@ -89,6 +90,7 @@ class Controller:
         self.rc_slot = None
         self.search_rc_slot = None
         self.target: Target | None = None
+        self.target_samples = deque(maxlen=7)
         self.track_xy = None
         self.last_frame_id = None
         self.last_valid_at = -math.inf
@@ -112,6 +114,7 @@ class Controller:
     def _abort(self, now: float, t: Telemetry, reason: str, pilot=False) -> Decision:
         self._state("PILOT_CONTROL" if pilot else "ABORTED", now, reason)
         self.target = None
+        self.target_samples.clear()
         self.last_velocity[:] = 0
         actions = [Action("revoke")]
         # Pilota/otopilot failsafe'ine karşı mod zorlaması yok.
@@ -254,21 +257,39 @@ class Controller:
                          <= c.target_association_m]
             self.target = max(valid, key=lambda x: x.confidence) if valid and frame_fresh else None
             if self.target:
+                self.target_samples.append(self.target)
+                # Yer düzlemi sabit olmalıdır. Son yedi PnP ölçümünün
+                # medyanı tek karelik konum/yükseklik sıçramasının hız
+                # komutuna dönüşmesini engeller.
+                if len(self.target_samples) >= 3:
+                    self.target = replace(self.target,
+                        north=float(np.median([x.north for x in self.target_samples])),
+                        east=float(np.median([x.east for x in self.target_samples])),
+                        ground_down=float(np.median([x.ground_down for x in self.target_samples])),
+                        camera_height_m=float(np.median([x.camera_height_m for x in self.target_samples])))
                 self.last_valid_at = frame_at
                 self.track_xy = (self.target.north, self.target.east)
         target = self.target if frame_fresh else None
         if target is None or now - target.captured_at > c.frame_timeout_s:
-            self.hold.reset()
-            self.last_velocity[:] = 0
             if self.state == "SEARCHING":
+                self.last_velocity[:] = 0
+                self.hold.reset()
                 self.reason = "Mavi hedef aranıyor; AUTO rota devam ediyor"
                 if now - self.last_valid_at > c.lost_target_abort_s:
                     self.track_xy = None
                 return self._decision()
             if now - self.last_valid_at > c.lost_target_abort_s:
                 return self._abort(now, t, "Hedef/güncel görüntü kayboldu; kilit ve alçalma iptal")
-            self.reason = "Hedef doğrulanamıyor; hareket durduruldu, kilit sıfırlandı"
-            return self._decision(Action("stop"))
+            # PnP her karede çözülmüyor. Kilit boşlukta silinmez ve tek kare
+            # boşluğunda son hız komutu korunur; boşluk max_lock_frame_gap_s'i
+            # aşarsa hareket durur, uzun kayıpta yukarıdaki iptal işler.
+            if now - self.last_valid_at > c.max_lock_frame_gap_s:
+                self.last_velocity[:] = 0
+                self.reason = "Hedefte geometri yok; hareket durduruldu, kilit bekliyor"
+                return self._decision(Action("stop"))
+            self.reason = "Kısa geometri boşluğu; son hız komutu korunuyor"
+            forward, right = heading_velocity(*self.last_velocity[:2], t.yaw)
+            return self._decision(Action("velocity", (forward, right, float(self.last_velocity[2]))))
 
         if self.state == "SEARCHING":
             self.reason = "Mavi hedef bağımsız karelerde doğrulanıyor"
@@ -287,7 +308,14 @@ class Controller:
         if now - self.interaction_started > c.interaction_timeout_s:
             return self._abort(now, t, "Merkezleme/alçalma süresi doldu; bırakma yapılmadı")
         offset_down = float((body_to_ned(t.roll, t.pitch, t.yaw) @ np.array(self.cfg.camera.offset_body_m))[2])
-        height = target.ground_down - t.down - offset_down
+        visual_height = target.ground_down - t.down - offset_down
+        # PnP kalibrasyonu sahada yaklaşık 1,2 m fazla yükseklik gösterdi.
+        # Düz sahada FC'nin HOME'a göre irtifası ikinci ve bağımsız bir
+        # alt sınırdır: iki ölçümden küçüğünü kullanmak aracın 5 m
+        # hedefinin altına inmesini engeller. Arazi farkında da bu seçim ancak
+        # daha erken/yüksek bırakmaya yol açar; daha alçak uçuşa yol açmaz.
+        relative_camera_height = t.relative_alt_m - offset_down
+        height = min(visual_height, relative_camera_height)
         en, ee = target.north - t.north, target.east - t.east
         error = math.hypot(en, ee)
         if height < c.minimum_camera_height_m:
@@ -299,7 +327,12 @@ class Controller:
             return self._decision(Action("stop"), error=error, height=height)
         vn = c.kp_xy * en - c.kd_xy * t.vn
         ve = c.kp_xy * ee - c.kd_xy * t.ve
-        stable = (error <= c.center_tolerance_m and t.horizontal_speed <= c.release_horizontal_speed_mps
+        # Ölçüm gürültüsü yükseklikle orantılı büyüdüğü için kilit toleransı da
+        # yükseklikle genişler; bırakma yüksekliğinde sabit değere iner.
+        tolerance = max(c.center_tolerance_m, c.center_tolerance_height_ratio*height)
+        descent_tolerance = max(c.descent_center_tolerance_m,
+                                tolerance*c.descent_center_tolerance_m/c.center_tolerance_m)
+        stable = (error <= tolerance and t.horizontal_speed <= c.release_horizontal_speed_mps
                   and abs(t.vd) <= c.release_vertical_speed_mps and t.tilt_deg <= c.release_tilt_deg)
         if self.state == "CENTERING":
             self.reason = "Hedef üstünde kararlı merkezleme bekleniyor"
@@ -309,10 +342,15 @@ class Controller:
             return self._decision(self._velocity(t, vn, ve, 0, dt), error=error, height=height,
                                   required=c.center_hold_s)
         if self.state == "DESCENDING":
-            if error > c.descent_center_tolerance_m:
+            if error > descent_tolerance:
                 self._state("CENTERING", now, "Merkezden sapma; alçalma durdu, tekrar merkezleniyor")
                 self.last_velocity[2] = 0
                 return self._decision(self._velocity(t, vn, ve, 0, dt), error=error, height=height)
+            if t.vd > c.max_descent_mps + 0.10:
+                self.hold.reset()
+                self.last_velocity[2] = 0
+                self.reason = "Düşey hız sınırı aşıldı; alçalma durduruldu"
+                return self._decision(Action("stop"), error=error, height=height)
             height_ok = abs(height - c.target_camera_height_m) <= c.height_tolerance_m
             held = self.hold.update(target.frame_id, target.captured_at, stable and height_ok)
             if held >= c.release_hold_s and not self.release_requested:
@@ -321,7 +359,7 @@ class Controller:
                 self.last_velocity[:] = 0
                 return self._decision(Action("stop"), Action("release", (target.frame_id, error, height)))
             vd = 0.0 if height_ok else c.kp_height * (height - c.target_camera_height_m)
-            descent_stable = (error <= c.center_tolerance_m
+            descent_stable = (error <= tolerance
                               and t.horizontal_speed <= c.release_horizontal_speed_mps
                               and t.tilt_deg <= c.release_tilt_deg)
             if not descent_stable:

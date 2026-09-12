@@ -1,0 +1,79 @@
+{
+  "base_config": "hizli-saha-base-20260910.json",
+  "strategy": "quick",
+  "camera_mount_yaw_deg": 180,
+  "actuator": "servo",
+  "vehicle_type": 13,
+  "sortie_id": "hizli-saha-20260910-03",
+  "mission_fingerprint": "54b32d9b5dfb71d3cf3f0d7d829cac5e1aaed76d9f7c3e906aada5534a6747fe",
+  "search_start_seq": 2,
+  "search_end_seq": 8,
+  "route_reviewed": true,
+  "entry_gates": [
+    [
+      [
+        38.34134467136891,
+        38.42196479003001
+      ],
+      [
+        38.34131888861974,
+        38.42242174082246
+      ]
+    ]
+  ],
+  "finish_gate": [
+    [
+      38.34063098286252,
+      38.42220201562241
+    ],
+    [
+      38.340660533479344,
+      38.42174543582037
+    ]
+  ],
+  "flight_polygon": [
+    [
+      38.34152294789823,
+      38.42202450136515
+    ],
+    [
+      38.340488467097515,
+      38.421692894472905
+    ],
+    [
+      38.34040085210177,
+      38.42213719863485
+    ],
+    [
+      38.341435332902485,
+      38.422468805527096
+    ]
+  ],
+  "quick_frames": 3,
+  "quick_hold_s": 0.1,
+  "quick_iou": 0.25,
+  "stop_speed_mps": 0.2,
+  "stop_hold_s": 0.3,
+  "stop_timeout_s": 5.0,
+  "verify_timeout_s": 3.0,
+  "retry_delay_s": 5.0,
+  "release_ack_timeout_s": 2.0,
+  "servos": {
+    "mavi": {
+      "channel": 9,
+      "release_pwm": 1800,
+      "bench_verified": true,
+      "function": 58
+    },
+    "kirmizi": {
+      "channel": 11,
+      "release_pwm": 800,
+      "bench_verified": true,
+      "pulse_s": 0.3,
+      "neutral_pwm": 1500,
+      "function": 61
+    }
+  },
+  "quick_verify_s": 0.1,
+  "quick_verify_frames": 3
+}

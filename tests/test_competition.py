@@ -39,7 +39,8 @@ def options(plan):
 
 
 def candidate(fid, now, color='mavi', metric=False, box=(.3,.2,.7,.8)):
-    return Candidate(color,fid,now,.95,box,target(fid,now) if metric else None)
+    return Candidate(color,fid,now,None,box,target(fid,now) if metric else None,
+                     source='opencv',color_verified=True,color_fill=.95)
 
 
 def ready(cfg, options, plan):
@@ -65,6 +66,21 @@ def link_ready(cfg,options,plan,tmp_path):
     link=CompetitionLink(cfg,store,True,threading.Event(),options,ledger,conn)
     link.route_authorized=True
     return link,conn,ledger
+
+
+def test_speed_limit_is_thousand_for_both_tasks(cfg,options,plan,tmp_path):
+    # Saha süresi nedeniyle ana görev de 1000 cm/s ile uçuyor; üst sınır aşılırsa
+    # devralma yine reddedilir.
+    center,_,_=link_ready(cfg,replace(options,strategy='center'),plan,tmp_path/'center')
+    center.store.params['WPNAV_SPEED']=1000
+    assert center.hardware_problem() is None
+    center.store.params['WPNAV_SPEED']=1200
+    assert center.hardware_problem() == 'WPNAV_SPEED center görev için 1–1000 cm/s aralığında olmalı'
+    quick,_,_=link_ready(cfg,options,plan,tmp_path/'quick')
+    quick.store.params['WPNAV_SPEED']=1000
+    assert quick.hardware_problem() is None
+    quick.store.params['WPNAV_SPEED']=0
+    assert quick.hardware_problem() == 'WPNAV_SPEED quick görev için 1–1000 cm/s aralığında olmalı'
 
 
 def test_legacy_files_unchanged():
@@ -150,10 +166,10 @@ def test_quick_ack_timeout_never_retries(cfg,options,plan):
     assert c.requested=={'mavi'}
 
 
-def test_metric_full_cycle_resume_then_other_color(cfg,options,plan):
+def test_metric_full_cycle_resume_then_other_color_lands(cfg,options,plan):
     options=replace(options,strategy='center')
     c=ready(cfg,options,plan)
-    statuses={}; releases=[]; mode='AUTO'; down=-6.; seq=2
+    statuses={}; releases=[]; resumes=[]; mode='AUTO'; down=-6.; seq=2
     for i in range(600):
         now=100+i*.05
         if c.state=='INTERCEPT' and c.child.state=='DESCENDING': down=-3.55
@@ -163,16 +179,19 @@ def test_metric_full_cycle_resume_then_other_color(cfg,options,plan):
         d=c.step(now,t,(candidate(i,now,color,metric=True),),i,now,plan,release_status=statuses)
         for a in d.actions:
             if a.kind=='mode': mode=a.values[0]
-            if a.kind=='resume': seq=a.values[0]
+            if a.kind=='resume': seq=a.values[0]; resumes.append(seq)
+            if a.kind=='mission_current': seq=a.values[0]
             if a.kind=='payload':
                 releases.append(a.values[:2]); statuses[a.values[0]]='SIMULATED'
-        if len(c.done)==2 and c.state=='SEARCHING' and c.child is None: break
+        if c.state=='LANDING': break
     assert releases==[('kirmizi','mavi'),('mavi','kirmizi')]
     assert c.done==set(COLORS)
-    assert mode=='AUTO' and seq==2
+    # İkinci yükten sonra kalan tarama waypointleri atlanır; AUTO ile LAND waypointi.
+    assert mode=='AUTO' and seq==plan.land_seq and resumes==[2]
+    assert down == -3.55  # İkinci yükten sonra tarama irtifasına yükselmez.
 
 
-def test_target_loss_during_center_never_releases(cfg,options,plan):
+def test_target_loss_during_center_returns_to_auto_and_can_retry(cfg,options,plan):
     c=ready(cfg,replace(options,strategy='center'),plan)
     mode='AUTO'
     centering_started = False
@@ -184,8 +203,41 @@ def test_target_loss_during_center_never_releases(cfg,options,plan):
         for a in d.actions:
             assert a.kind!='payload'
             if a.kind=='mode': mode=a.values[0]
-        if c.state=='ABORTED': break
-    assert c.state=='ABORTED'
+        if c.state=='RESUME_SELECT': break
+    assert c.state=='RESUME_SELECT' and mode=='GUIDED'
+    assert Action('resume',(2,mission_digest(plan))) in d.actions
+    assert not any(a.kind in ('payload','release') for a in d.actions)
+    now += .05
+    d=c.step(now,telemetry(now,mode='GUIDED',mission_seq=2),(),101,now,plan)
+    assert d.state=='RESUME_AUTO' and Action('mode',('AUTO','GUIDED')) in d.actions
+    now += .05
+    d=c.step(now,telemetry(now,mode='AUTO',mission_seq=2),(),102,now,plan)
+    assert d.state=='SEARCHING' and d.actions==(Action('revoke'),)
+
+
+def test_center_keeps_verified_fixed_target_while_visual_quad_remains(cfg,options,plan):
+    """Gerçek uçuşta dururken PnP doğrulandıktan sonra renk dörtgeni
+    sürdü, fakat PnP düzlem çözümü kesildi. Sabit yer hedefi yeni bir
+    PnP kabul etmeden aynı OpenCV iziyle merkezleme/alçalmayı sürdürmeli.
+    """
+    c=ready(cfg,replace(options,strategy='center'),plan)
+    mode='AUTO'; down=-6.; statuses={}; releases=[]; metric=True
+    for i in range(260):
+        now=100+i*.05
+        if c.state=='INTERCEPT':
+            metric=False
+            if c.child.state=='DESCENDING':
+                down=-3.55
+        t=telemetry(now,mode=mode,down=down,relative_alt_m=-down)
+        d=c.step(now,t,(candidate(i,now,metric=metric),),i,now,plan,release_status=statuses)
+        for a in d.actions:
+            if a.kind=='mode': mode=a.values[0]
+            if a.kind=='payload':
+                releases.append(a.values[:2]); statuses[a.values[0]]='SIMULATED'
+        if releases:
+            break
+    assert releases==[('kirmizi','mavi')]
+    assert c.state=='RELEASE_WAIT'
 
 
 def test_route_end_preserves_payload_and_requires_finish(cfg,options,plan):
@@ -285,12 +337,16 @@ def test_vision_both_colors_and_one_meter_red(cfg):
     assert len(candidates)==2 and all(x.metric is None for x in candidates)
 
 
-def test_configuration_unknowns_remain_blocked(cfg):
+def test_current_profile_readiness_and_safety_fields(cfg):
     for task in ('ana','hizli'):
         base,o=Options.load(f'config/{task}-gorev.json')
-        assert o.vehicle_type==13 and o.servos['kirmizi'].channel==9 and o.servos['mavi'].channel==10
-        assert o.servos['mavi'].release_pwm is None
-        assert o.missing(base)
+        assert o.vehicle_type==13 and o.servos['mavi'].channel==9 and o.servos['kirmizi'].channel==11
+        assert o.servos['mavi'].release_pwm == 1800
+        assert o.servos['kirmizi'].function == 61
+        assert o.servos['kirmizi'].neutral_pwm == 1500
+        assert bool(o.missing(base)) == (task == 'ana')
+        unchecked=replace(base,mission=replace(base.mission,direct_land_corridor_checked=None))
+        assert 'iki yük sonrası doğrudan LAND bölgesinin açık olduğu saha kontrolü' in o.missing(unchecked)
     with pytest.raises(ValueError):
         replace(Options(),servos={'mavi':Servo(9,1500),'kirmizi':Servo(9,1500)}).validate()
 
@@ -326,12 +382,12 @@ def test_strategy_switch_does_not_reset_physical_payload(cfg,options,tmp_path):
 def test_resume_only_approved_waypoint_while_owned(cfg,options,plan,tmp_path):
     link,conn,_=link_ready(cfg,options,plan,tmp_path)
     link.store.value=telemetry(100,mode='GUIDED');link.owned=True;link.claim_slot=6
-    link._perform(100,(Action('resume',(2,plan.fingerprint)),))
+    link._perform(100,(Action('resume',(2,mission_digest(plan))),))
     assert conn.mav.mission_set_current_send.call_args.args==(1,1,2)
-    link._perform(100,(Action('resume',(4,plan.fingerprint)),))
+    link._perform(100,(Action('resume',(4,mission_digest(plan))),))
     link._perform(100,(Action('resume',(2,'wrong')),))
     link.store.pilot_override=True
-    link._perform(100,(Action('resume',(2,plan.fingerprint)),))
+    link._perform(100,(Action('resume',(2,mission_digest(plan))),))
     assert conn.mav.mission_set_current_send.call_count==1
 
 
@@ -339,7 +395,6 @@ def test_quick_configuration_needs_no_calibration():
     cfg,o=Options.load('config/hizli-gorev.json')
     assert cfg.camera.calibration_file is None
     assert 'kamera kalibrasyonu' not in o.missing(cfg)
-    cfg.verify_model()
 
 
 def test_observe_runtime_runs_both_colors_without_commands(cfg,options,tmp_path):
@@ -350,9 +405,10 @@ def test_observe_runtime_runs_both_colors_without_commands(cfg,options,tmp_path)
     rt.start(connect=False)
     try:
         now=time.monotonic()
-        image=np.zeros((720,1280,3),np.uint8)
-        frame=Frame(1,now,now,image,(Detection('mavi_hedef',.9,(.1,.1,.3,.3)),
-                                   Detection('kirmizi_hedef',.9,(.5,.5,.7,.7))))
+        image=np.full((720,1280,3),80,np.uint8)
+        cv2.rectangle(image,(180,180),(380,380),(220,65,30),-1)
+        cv2.rectangle(image,(760,320),(920,480),(30,65,220),-1)
+        frame=Frame(1,now,now,image,(),backend='OPENCV')
         rt.mailbox.put(frame)
         until=time.monotonic()+1
         while time.monotonic()<until and (len(rt.candidates)!=2 or rt.state.jpeg is None): time.sleep(.01)
@@ -387,3 +443,64 @@ def test_arducopter_land_wire_parameter_is_supported(cfg,options,plan,tmp_path):
     item.param1=5
     link.ingest(item,100.1)
     assert link.failure is not None
+
+
+def test_center_search_speed_allows_requested_three_mps_but_no_more():
+    replace(Options(), strategy='center', center_search_speed_mps=3.0).validate()
+    with pytest.raises(ValueError):
+        replace(Options(), strategy='center', center_search_speed_mps=3.01).validate()
+
+
+@pytest.mark.parametrize('profile', ['config/ana-gorev.json', 'config/ana-imx708.json',
+                                     'config/ana-aux1-only.json'])
+def test_main_panel_is_low_bandwidth_but_readable(profile):
+    cfg, _ = Options.load(profile)
+    assert cfg.web.width == 640
+    assert cfg.web.fps == 4
+    assert cfg.web.jpeg_quality == 35
+
+
+def test_aux1_only_hardware_check_and_initial_requests_never_touch_aux3(cfg, options, plan, tmp_path):
+    servos = dict(options.servos)
+    servos['mavi'] = Servo(9, 1800, True, function=58)
+    servos['kirmizi'] = Servo(11, 800, True, pulse_s=.3, neutral_pwm=1500, function=61)
+    opts = replace(options, actuator='servo', payloads=('mavi',), servos=servos)
+    link, conn, _ = link_ready(cfg, opts, plan, tmp_path)
+    link.store.params['WPNAV_SPEED'] = 1000
+    link.servo_params.update(SERVO9_FUNCTION=58, SERVO9_MIN=1100, SERVO9_MAX=1900)
+    assert link.hardware_problem() is None
+    link._initial_requests()
+    names = {call.args[2] for call in conn.mav.param_request_read_send.call_args_list}
+    assert {b'SERVO9_FUNCTION', b'SERVO9_MIN', b'SERVO9_MAX'} <= names
+    assert not any(name.startswith(b'SERVO11_') for name in names)
+
+
+@pytest.mark.parametrize('profile',['config/ana-gorev.json','config/ana-imx708.json'])
+def test_main_profiles_can_descend_from_competition_altitude(profile):
+    # Hedef görülüp ortalandığında 5 m'ye inme süresi
+    # merkezleme/alçalma sınırının altında kalmalı (15 m'den yaklaşık 40 s).
+    cfg, _ = Options.load(profile)
+    c = cfg.control
+    assert c.target_camera_height_m == 5. and c.minimum_camera_height_m <= 3.
+    assert .2 <= c.max_descent_mps <= .3 and c.max_climb_mps >= 1.
+    assert c.interaction_timeout_s >= 200.
+    assert (15.-c.target_camera_height_m)/c.max_descent_mps < c.interaction_timeout_s
+    # Yüksekte kilit toleransı ölçüm gürültüsüyle birlikte büyür, bırakma
+    # yüksekliğinde sabit değere iner: 15 m'de 0,75 m, 5 m'de 0,50 m.
+    assert .03 <= c.center_tolerance_height_ratio <= .08
+    assert c.center_tolerance_height_ratio*c.target_camera_height_m < c.center_tolerance_m
+
+
+@pytest.mark.parametrize('profile',['config/ana-gorev.json','config/ana-imx708.json'])
+def test_main_profile_tolerances_exceed_measured_pnp_noise(profile):
+    # 11 Eylül ana uçuşunda 10 m'de ölçülen PnP saçılması: yatay sd ~0,12 m,
+    # görsel yükseklik sd ~0,39 m (9,04–10,15 m). Toleranslar bu gürültünün
+    # altında kalırsa kilit hiç tamamlanmaz; en az ~3 sigma pay bırakılır.
+    cfg, _ = Options.load(profile)
+    c = cfg.control
+    assert c.center_tolerance_m >= .4 and c.descent_center_tolerance_m > c.center_tolerance_m
+    assert c.height_tolerance_m >= .9
+    assert c.target_camera_height_m - c.height_tolerance_m > c.minimum_camera_height_m + .9
+    # GUIDED'de ölçülen sürüklenme 0,20–0,27 m/s idi; bırakma eşiği bunun üstünde.
+    assert c.release_horizontal_speed_mps >= .3
+    assert c.lost_target_abort_s >= 2.

@@ -2,16 +2,23 @@
   "camera": {
     "width": 1280,
     "height": 720,
-    "fps": 30,
+    "fps": 50,
     "calibration_file": null,
     "confidence_min": 0.4,
-    "offset_body_m": [0.11, 0.0, 0.05],
+    "offset_body_m": [
+      0.11,
+      0.0,
+      0.05
+    ],
     "target_side_m": 2.0,
     "sensor_output_size": [
       2304,
       1296
     ],
-    "lens_position": 0.1
+    "lens_position": 0.0,
+    "variant": "imx708",
+    "backend": "picamera2",
+    "identity": "imx708"
   },
   "control": {
     "target_camera_height_m": 9.0,
@@ -24,12 +31,12 @@
     "acquire_s": 0.5
   },
   "link": {
-    "device": null
+    "device": "/dev/serial/by-id/usb-Hex_ProfiCNC_CubeOrange_220047001251313132383631-if00"
   },
   "mission": {
     "takeoff_mode": "auto",
     "return_mode": "land",
-    "direct_land_corridor_checked": null
+    "direct_land_corridor_checked": true
   },
   "web": {
     "host": "0.0.0.0",
