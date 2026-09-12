@@ -195,12 +195,12 @@ class CompetitionLink(MavlinkLink):
                 uc = 'üst' if release_yukaride else 'alt'
                 return (f'{color} servo BIRAKMA tarafında: {output} us, bırakma {s.release_pwm} us '
                         f'({uc} uç, marj {marj} us); yükü takmayın')
-        # Sınır dışı çıkış yükü düşürmez ama servoyu mekanizmaya dayar:
-        # RC passthrough SERVO<n>_MIN/MAX'i uygulamaz, ham kanal değeri geçer.
-        if not lower <= output <= upper:
-            yon = 'MIN altında' if output < lower else 'MAX üstünde'
-            return (f'{color} servo çıkışı {yon}: {output} us (MIN {lower:.0f}, MAX {upper:.0f}); '
-                    'RC kanalı servoyu sınır tanımadan sürüyor, servo mekanizmaya dayanıyor')
+        # Sınır dışı çıkış BİLEREK engel değildir. RC passthrough
+        # SERVO<n>_MIN/MAX'i uygulamaz, ham kanal değeri geçer; sahada mavi
+        # tutma konumu 982 us olarak ölçüldü (MIN 1100). Bu, yükü düşürmez --
+        # bırakma 1800, yani tam ters uç -- yalnız servoyu mekanizmaya dayar.
+        # Bırakma tarafındaki aşım zaten yukarıdaki yönlü kural tarafından
+        # yakalanır. Aşınma uyarısı scripts/servo_teshis.py çıktısındadır.
         if s.neutral_pwm is not None and abs(output-s.neutral_pwm) > 25:
             return f'{color} servo nötr değil: {output} us; yükü takmayın'
         return None

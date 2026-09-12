@@ -149,15 +149,21 @@ def test_blue_servo_beyond_autopilot_limits_blocks_loading(cfg,options,plan,tmp_
     assert '2006' in problem and 'üst uç' in problem and 'yükü takmayın' in problem
 
 
-def test_blue_servo_below_min_is_reported_as_strain_not_release(cfg,options,plan,tmp_path):
-    """12 Eylul sahasinda olculen 982 us: MIN 1100'un altinda ama birakma 1800'un
-    uzaginda. Yuku dusurmez; servoyu mekanizmaya dayar. Mesaj bunu ayirmali."""
+def test_blue_servo_below_min_does_not_block_flight(cfg,options,plan,tmp_path):
+    """Sahada olculen tutma konumu 982 us, MIN 1100'un altinda.
+
+    Yuku dusurmez: birakma 1800, yani tam ters uc; mandal fiziksel olarak
+    kapali dogrulandi. Sinir disi olmak yalnizca servoyu mekanizmaya dayar.
+    Bunu ucus engeli yapmak calisan bir kurulumu yerde birakiyordu.
+    """
     link=servo_link(cfg,options,plan,tmp_path)
-    link.ingest(outputs(982,1495),100)
-    problem=link.startup_servo_problem(100)
-    assert problem == ('mavi servo çıkışı MIN altında: 982 us (MIN 1100, MAX 1900); '
-                       'RC kanalı servoyu sınır tanımadan sürüyor, servo mekanizmaya dayanıyor')
-    assert 'BIRAKMA' not in problem
+    safe=outputs(982,1495)
+    link.ingest(safe,100)
+    link.ingest(safe,102.1)
+    assert link.startup_servo_problem(102.1) is None
+    # Birakma tarafindaki asim yine engel.
+    link.ingest(outputs(2006,1495),102.2)
+    assert 'BIRAKMA tarafında' in link.startup_servo_problem(102.2)
 
 
 def test_blue_servo_at_release_position_blocks_loading(cfg,options,plan,tmp_path):
