@@ -15,7 +15,9 @@ from safak_gorev2.competition.config import Options, Servo, COLORS
 from safak_gorev2.competition.controller import DualController
 from safak_gorev2.competition.link import CompetitionLink
 from safak_gorev2.competition.payload import PayloadLedger
-from safak_gorev2.competition.route import crossed, inside, RouteProgress, mission_digest
+from safak_gorev2.competition.runtime import CompetitionRuntime
+from safak_gorev2.competition.route import (crossed, inside, RouteProgress,
+                                             mission_contract_problem, mission_digest)
 from safak_gorev2.competition.vision import Candidate, DualVision
 from safak_gorev2.geometry import Calibration
 from safak_gorev2.mavlink_io import TelemetryStore, PARAMETERS, validate_mission
@@ -81,6 +83,87 @@ def test_speed_limit_is_thousand_for_both_tasks(cfg,options,plan,tmp_path):
     assert quick.hardware_problem() is None
     quick.store.params['WPNAV_SPEED']=0
     assert quick.hardware_problem() == 'WPNAV_SPEED quick görev için 1–1000 cm/s aralığında olmalı'
+
+
+def test_disarmed_link_reloads_live_mission_instead_of_trusting_cached_copy(cfg,options,plan,tmp_path):
+    link,conn,_=link_ready(cfg,options,plan,tmp_path)
+    link.store.autopilot_confirmed=True
+    link.store.value=telemetry(100,armed=False,landed=1)
+    link._tick(100)
+    conn.mav.mission_request_list_send.assert_called_once_with(
+        cfg.link.target_system,cfg.link.target_component)
+    conn.mav.mission_request_list_send.reset_mock()
+    link.mission_stable_reads=2
+    link._tick(101)
+    conn.mav.mission_request_list_send.assert_not_called()
+    link.store.value=telemetry(102,armed=True,landed=2)
+    link._tick(102)
+    conn.mav.mission_request_list_send.assert_not_called()
+
+
+def test_red_servo_must_hold_neutral_for_two_seconds_before_flight(cfg,options,plan,tmp_path):
+    servos={'mavi':Servo(9,1800,True,function=58),
+            'kirmizi':Servo(11,800,True,.3,1500,function=61)}
+    link,_,_=link_ready(cfg,replace(options,actuator='servo',servos=servos),plan,tmp_path)
+    neutral=source(mav.MAVLink_servo_output_raw_message(0,0,*([1000]*8),servo11_raw=1495))
+    link.ingest(neutral,100)
+    link.ingest(neutral,101.9)
+    assert 'kararlılığı bekleniyor' in link.startup_servo_problem(101.9)
+    link.ingest(neutral,102.05)
+    assert link.startup_servo_problem(102.05) is None
+    release=source(mav.MAVLink_servo_output_raw_message(0,0,*([1000]*8),servo11_raw=800))
+    link.ingest(release,102.1)
+    assert link.startup_servo_problem(102.1) == 'kirmizi servo nötr değil: 800 us; yükü takmayın'
+
+
+def test_flight_preflight_rejects_changed_land_before_camera_or_arm(cfg,options,plan,tmp_path):
+    rt=CompetitionRuntime(replace(cfg,runtime_dir=str(tmp_path/'preflight')),'flight',options)
+    changed=replace(plan,items=plan.items[:-1]+(replace(plan.items[-1],x=plan.items[-1].x+100),))
+    rt.telemetry.mission=changed
+    rt.telemetry.value=telemetry(100,armed=False,landed=1)
+    rt.telemetry.preflight_problem=lambda:None
+    rt.link=Mock(failure=None,mission_stable_reads=2)
+    rt.link.hardware_problem.return_value=None
+    rt.link.startup_servo_problem.return_value=None
+    try:
+        problem=rt.wait_for_flight_preflight(.1)
+        assert 'Rota parmak izi' in problem
+        assert not rt.flight_gate_open
+    finally:
+        rt.close()
+
+
+def test_camera_preflight_opens_gate_only_for_fresh_opencv_frame(cfg,options,tmp_path):
+    rt=CompetitionRuntime(replace(cfg,runtime_dir=str(tmp_path/'camera-gate')),'flight',options)
+    rt.telemetry.value=telemetry(100,armed=False,landed=1)
+    try:
+        with rt.state.lock:
+            rt.state.backend='OPENCV'
+            rt.state.camera_info={'model':'IMX708'}
+            rt.state.frame_at=99.9
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr('safak_gorev2.competition.runtime.time.monotonic',lambda:100.)
+            assert rt.wait_for_camera_preflight(.1) is None
+        assert rt.flight_gate_open
+    finally:
+        rt.close()
+
+
+def test_camera_preflight_rejects_arm_before_first_frame(cfg,options,tmp_path):
+    rt=CompetitionRuntime(replace(cfg,runtime_dir=str(tmp_path/'camera-arm')),'flight',options)
+    rt.telemetry.value=telemetry(100,armed=True,landed=2)
+    try:
+        assert 'Kamera ön kontrolü bitmeden ARM edildi' in rt.wait_for_camera_preflight(.1)
+        assert not rt.flight_gate_open
+    finally:
+        rt.close()
+
+
+def test_mission_contract_rejects_stale_land_minus_one_range(options,plan):
+    mission_options=replace(options,search_scope='mission',search_end_seq=plan.land_seq-1)
+    assert mission_contract_problem(plan,mission_options) is None
+    assert mission_contract_problem(plan,replace(mission_options,search_end_seq=2)) == (
+        'Rota taraması TAKEOFF sonrası seçilen waypointten LAND öncesine kadar olmalı')
 
 
 def test_legacy_files_unchanged():
@@ -466,6 +549,15 @@ def test_main_panel_is_low_bandwidth_but_readable(profile):
     assert cfg.web.jpeg_quality == 35
 
 
+def test_panel_altitude_hides_stale_global_position():
+    from safak_gorev2.competition.runtime import CompetitionRuntime
+    from safak_gorev2.types import Telemetry
+    fresh = Telemetry(global_at=99.8, relative_alt_m=14.96)
+    stale = Telemetry(global_at=98., relative_alt_m=14.96)
+    assert CompetitionRuntime.altitude_label(fresh,100.,.6) == 'IRTIFA 15.0 m'
+    assert CompetitionRuntime.altitude_label(stale,100.,.6) == 'IRTIFA --'
+
+
 def test_aux1_only_hardware_check_and_initial_requests_never_touch_aux3(cfg, options, plan, tmp_path):
     servos = dict(options.servos)
     servos['mavi'] = Servo(9, 1800, True, function=58)
@@ -488,9 +580,16 @@ def test_main_profiles_can_descend_from_competition_altitude(profile):
     cfg, _ = Options.load(profile)
     c = cfg.control
     assert c.target_camera_height_m == 5. and c.minimum_camera_height_m <= 3.
-    assert .2 <= c.max_descent_mps <= .3 and c.max_climb_mps >= 1.
+    assert c.max_climb_mps >= 1.
     assert c.interaction_timeout_s >= 200.
     assert (15.-c.target_camera_height_m)/c.max_descent_mps < c.interaction_timeout_s
+    # Alçalma hızının üst sınırı ayarlanan bir sayı değil, türetilen iki kural:
+    # (1) P-yasası bırakma penceresine girerken kp_height*hız kadar yavaşlama
+    # ister; düşey rampa sınırı bundan küçükse pencere aşılır.
+    assert c.kp_height*c.max_descent_mps <= c.max_accel_mps2
+    # (2) Rampa sınırıyla durma mesafesi bırakma penceresinin yarı genişliğini
+    # aşmamalı, yoksa araç minimum_camera_height_m'ye doğru sarkar.
+    assert c.max_descent_mps**2/(2*c.max_accel_mps2) <= c.height_tolerance_m
     # Yüksekte kilit toleransı ölçüm gürültüsüyle birlikte büyür, bırakma
     # yüksekliğinde sabit değere iner: 15 m'de 0,75 m, 5 m'de 0,50 m.
     assert .03 <= c.center_tolerance_height_ratio <= .08

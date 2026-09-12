@@ -48,17 +48,22 @@ def main():
     app = create_app(cfg,runtime.state,runtime.telemetry)
     @app.get('/api/competition')
     def competition_status():
+        t = runtime.telemetry.snapshot()
+        now = time.monotonic()
         with runtime.state.lock:
             decision = runtime.state.decision
-            frame_age = time.monotonic()-runtime.state.frame_at
+            frame_age = now-runtime.state.frame_at
             times = tuple(runtime.state.frame_times)
             vision_fps = (len(times)-1)/(times[-1]-times[0]) if len(times)>1 and times[-1]>times[0] else 0.
             candidates = [asdict(c) for c in runtime.candidates]
-        t = runtime.telemetry.snapshot()
+        global_age = now-t.global_at
+        relative_alt_m = (t.relative_alt_m if t.relative_alt_m is not None
+                          and 0 <= global_age <= cfg.control.telemetry_timeout_s else None)
         return jsonify({'strategy':options.strategy,'actuator':options.actuator,
             'profile_digest':runtime.profile_digest,'camera_contract':runtime.camera_contract,'camera_actual':runtime.state.camera_info,'sortie_id':options.sortie_id,
             'mission_digest':mission_digest(runtime.telemetry.mission) if runtime.telemetry.mission else None,
             'state':decision.state, 'reason':decision.reason, 'flight_mode':t.mode,
+            'relative_alt_m':relative_alt_m,
             'frame_fresh':0 <= frame_age <= cfg.control.frame_timeout_s,
             'camera_requested_fps':cfg.camera.fps,'vision_fps':vision_fps if frame_age<=cfg.control.frame_timeout_s else 0.,
             'vision_processing_ms':runtime.vision_processing_ms,'candidates':candidates,
@@ -84,7 +89,7 @@ def main():
                 'img{max-width:100%}#phase{font-size:32px;font-weight:bold}p{max-width:960px}</style>'
                 '<h1>ŞAFAK — iki renkli görev</h1><p>Mavi hedef → kırmızı yük; kırmızı hedef → mavi yük.</p>'
                 '<div id="phase">Panel bağlantısı bekleniyor</div><p id="reason"></p>'
-                '<p id="mode"></p><p id="payloads"></p>'
+                '<p id="mode"></p><p id="altitude">İrtifa (HOME): —</p><p id="payloads"></p>'
                 '<p>ACK/PWM komut kanıtıdır; fiziksel yük düşüşü doğrulanmaz.</p>'
                 '<img src="/frame.jpg" id="video" width="960">'
                 '<script src="/competition.js"></script></html>')
@@ -115,13 +120,14 @@ setInterval(async()=>{
     el("reason").textContent = s.reason;
     el("mode").textContent = "Uçuş modu: "+s.flight_mode+" · "+(s.frame_fresh ? "Görüntü güncel" : "Görüntü güncel değil");
     el("mode").textContent += " · İşlenen: "+Number(s.vision_fps||0).toFixed(1)+" FPS / kamera isteği: "+s.camera_requested_fps;
+    el("altitude").textContent = "İrtifa (HOME): "+(Number.isFinite(s.relative_alt_m) ? Number(s.relative_alt_m).toFixed(1)+" m" : "—");
     el("payloads").textContent = "Kırmızı yük: "+(s.payloads.kirmizi || "Bekliyor")+
       " · Mavi yük: "+(s.payloads.mavi || "Bekliyor")+
       (s.actuator === "simulated" ? " · TEMSİLİ BIRAKMA" : " · GERÇEK SERVO");
     el("video").src = "/frame.jpg?t="+Date.now();
   } catch(e) {
     el("phase").textContent = "Pi paneline erişilemiyor; araç durumu bilinmiyor";
-    el("reason").textContent = ""; el("mode").textContent = ""; el("payloads").textContent = "";
+    el("reason").textContent = ""; el("mode").textContent = ""; el("altitude").textContent = "İrtifa (HOME): —"; el("payloads").textContent = "";
   } finally { busy = false; }
 },250);
 ''',
@@ -144,6 +150,26 @@ setInterval(async()=>{
     thread = threading.Thread(target=serve,daemon=True)
     thread.start()
     runtime.start()
+    camera_gate_thread = None
+    if args.mode == 'flight':
+        print('Zorunlu ön kontrol: canlı rota iki kez okunuyor; servo nötrü ve DISARM doğrulanıyor...',
+              flush=True)
+        problem = runtime.wait_for_flight_preflight()
+        if problem:
+            runtime.fail_preflight(problem)
+            runtime.close()
+            thread.join(timeout=3)
+            return 2
+        print('Rota/servo/DISARM tamam; kamera ilk taze karesi bekleniyor. Henüz ARM etmeyin.', flush=True)
+        def open_camera_gate():
+            camera_problem = runtime.wait_for_camera_preflight()
+            if camera_problem:
+                runtime.fail_preflight(camera_problem)
+                return
+            print('UÇUŞ ÖN KONTROLÜ TAMAM: ROTA İKİ KEZ EŞ / SERVO NÖTR / KAMERA AKTİF / DISARM. '
+                  'Mission Planner rotasını artık değiştirmeyin; şimdi ARM/AUTO yapılabilir.', flush=True)
+        camera_gate_thread = threading.Thread(target=open_camera_gate, name='flight-preflight', daemon=True)
+        camera_gate_thread.start()
     print(f'Görev: {"ANA" if options.strategy == "center" else "HIZLI"} / {options.actuator}; panel portu {cfg.web.port}',flush=True)
     failed = False
     try:
@@ -155,7 +181,10 @@ setInterval(async()=>{
             runtime.link.failure = str(e)
         print(f'HATA: {e}',flush=True)
     finally:
+        failed = failed or runtime.flight_preflight_failure is not None
         runtime.close()
+        if camera_gate_thread:
+            camera_gate_thread.join(timeout=2)
         thread.join(timeout=3)
     return 1 if failed else 0
 

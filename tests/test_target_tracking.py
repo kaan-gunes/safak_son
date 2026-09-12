@@ -298,6 +298,17 @@ def test_debug_lines_report_state_center_missed_and_score():
     assert CompetitionRuntime.debug_lines(bare)[0] == '-'  # Takip kapalıyken sayı uydurulmaz.
 
 
+def test_panel_candidate_label_contains_only_color_and_metric_distance():
+    from safak_gorev2.competition.runtime import CompetitionRuntime
+    from safak_gorev2.types import Target
+    metric = Target(5,100.,.9,1.,2.,3.,5.24,.4,((0.,0.),)*4,(.3,.2,.7,.8),.95)
+    measured = Candidate('mavi',5,100.,None,(.3,.2,.7,.8),metric,'opencv',True,.93)
+    tracked = Candidate('kirmizi',6,100.02,None,(.3,.2,.7,.8),None,'tracked',False,None)
+    assert CompetitionRuntime.candidate_label(measured) == 'MAVI / 5.2 m'
+    assert CompetitionRuntime.candidate_label(tracked) == 'KIRMIZI'
+    assert 'OPENCV' not in CompetitionRuntime.candidate_label(measured)
+
+
 def test_observe_runtime_draws_the_bridged_label(cfg, options, tmp_path):
     """Boş karede panel etiketi kaybolmaz ve boru hattı hata vermez."""
     import time

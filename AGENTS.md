@@ -1,5 +1,75 @@
 # ŞAFAK UAV — Proje bağlamı ve çalışma kuralları
 
+## DEVİR — 12 Eylül kaybedilen uçuş / zorunlu son-şans kapısı
+
+- Kaybedilen sortie `20260912T114011Z-ana-imx708` kaydı 347 s boyunca
+  `WAIT_AUTO`: profilde `9280b849…abd90`, FC'de LAND17 yaklaşık 14,6 m
+  taşınmış `c91d1230…e2860a4` rotası vardı. Hiçbir action/PWM/servo
+  üretilmedi; ledger boş. 12 mavi + 9 kırmızı aday kameranın çalıştığını
+  kanıtlıyor. Kanıt `artifacts/failed-flight-20260912/flight.jsonl`.
+- Kırmızı açılış düşüşü görevden önce/no-signal: kumanda kapalıyken
+  RC11 ve AUX3 0 us. `FUNCTION61` ancak verici açıkken yaklaşık 1495 us
+  verir. Kalıcı garanti donanımsaldır (gecikmeli besleme/anahtar/pim).
+  Tornavidayla çevrilen servonun dişli ve horn hizası fiziksel onay ister.
+- Flight modu artık rota iki kez aynı okunmadan, digest+Seq kapsamı,
+  DISARM/LANDED/tüm preflight, süreli servo 1500±25 us/2 s ve taze gerçek
+  OpenCV kare doğrulanmadan açılmaz. Hata `UÇUŞ BAŞLATILMADI` + exit 2;
+  tam başarı satırı görülmeden ARM/AUTO yapılmaz. Rota yenilemesi iki eş
+  okumadan sonra durur; kendi okumasında geçici görev durumu oluşturmaz.
+- Canlı rota/yetkili Pi profili: TAKEOFF1=15 m, WP2–16=15 m, LAND17=1 m,
+  tarama3–16, 3,5 m/s, digest `c91d1230de8caeb1ff826a2f941d2c071cc555999379fc6914b9772d9e2860a4`.
+  Pi `furkan@172.20.10.6`, görev kapalı. Yerel 421/5, Pi 379 test; tam
+  ArduCopter 4.6.3 SITL iki yük+LAND+DONE 119,01 s:
+  `artifacts/competition-sitl/20260912T171636-center-complete`.
+  Pi yedeği `runtime/before-final-gate-20260912/`; dosya hashleri eş.
+- Son canlı başlatma kumanda kapalı/0 us nedeniyle doğru reddedildi.
+  Kumanda açık, LOITER, DISARM, yükler takılı değilken 1495–1500 us ve tam
+  başarı satırı hâlâ bekleniyor. Kumandasız kamera probe'u reboot sonrası
+  geçti: 20 s/1021 kare/50,03 FPS/stale0/hata0; kanıt
+  `artifacts/final-preflight-20260912/`. Son JPEG yakın desenli kumaş/yüzeyle
+  dolu; saha öncesi lens altı ve kadraj merkezi fiziksel olarak açık
+  doğrulanmalı. Servo/ARM/mod/FC parametre komutu
+  verilmedi. Profilin yetkili kopyası Pi'dir; Mac config'i Pi'ye rsync
+  edilmez. `route_digest` ile görev aynı anda seri portu açmaz.
+
+## DEVİR — 12 Eylül yeni rota / WP2 hızlı transit / 3,5 m/s tarama
+
+- Pi `furkan@192.168.137.145`, proje
+  `/home/furkan/Desktop/safak-gorev2-quad`. Görev/kayıt kapalı; FC salt
+  okunur kontrolde DISARM/LANDED. `WPNAV_SPEED=1000`, `WPNAV_ACCEL=250`,
+  `SERVO9_FUNCTION=58`, `SERVO11_FUNCTION=61`; servo/ARM/mod/parametre
+  komutu verilmedi.
+- Pi'deki yetkili `ana-imx708.json` kopyasında yalnız start2→3 ve geçici
+  tarama hızı 2,5→**3,5 m/s** yapıldı. Seq2'ye transit FC sınırıyla 10 m/s'ye
+  kadar; seq3'te DO_CHANGE_SPEED ACK gelmeden arama yok. Controller ve link
+  seq2'de hız/hedef devralmayı engeller. Mac profili Pi üzerine rsync edilmedi.
+- Canlı yeni rota: TAKEOFF1=15 m, WP2–16=15 m, LAND17=1 m; digest
+  `9280b84931937b757c66e66518b76adbdc7156ee2a3ee2839ad446ebf84abd90`.
+  Tarama yolu seq3–16 yaklaşık 697 m/199 s. Hedef waypointlerden LAND17'ye
+  doğrudan mesafe en çok yaklaşık 195 m.
+- Kullanıcı iki yükün fiziksel olarak takılı ve hedef bölgesi→LAND17
+  koridorunun boş olduğunu doğruladı. Yeni sortie
+  `20260912T114011Z-ana-imx708`; ledger'da 0 kayıt. Pi'de digest yazıldı,
+  `start3/end16` ve **EŞLEŞİYOR** geri okundu. Yetkili Pi profili Mac'e
+  eşlendi; SHA256 `c8645c7d…24d29` iki tarafta aynı.
+- Eski rastgele test waypointleri yalnız `demo.py`/test fixture'larında;
+  üretim `competition.main` canlı FC rotasını `search_scope=mission`+digest
+  ile kullanır.
+- Son profil `--check` eksiksiz; kaynak/test hashleri eş. Yerel
+  **415 geçti/5 atlandı**, Pi **373 geçti**.
+  IMX708 probe 20 s/1020 kare/50,02 FPS/stale0/hata0/OpenCV p95 3,93 ms.
+  Pi yedekleri `runtime/before-fast-transit-3p5-route-20260912/` ve
+  `runtime/before-final-route-authorize-20260912/`. Görev başlatılmadı;
+  batarya güç döngüsü sonrası önce rota `--profile` kontrolü yapılmalı.
+
+## DEVİR — 12 Eylül panel sade hedef etiketi / HOME irtifası
+
+- `/competition` kutusunda yalnız renk ve varsa PnP mesafesi gösterilir;
+  taze HOME-göreli irtifa görüntü ve HTML panelindedir, eski veride `—` olur.
+- Pi'ye yedekli dağıtıldı; hashler eş, ilgili 87 ve değişiklik sonrası tam
+  373 Pi testi geçti. Pi yedeği
+  `runtime/before-panel-label-altitude-20260912/`.
+
 ## DEVİR — 12 Eylül AUX1 ana görev saha kurtarma
 
 - Kullanıcı ikinci yükü de taktı. Salt okunur teşhiste AUX3/11 `FUNCTION=0`, çıkış 0 µs; RC11 ise 1495 µs stabil bulundu. Kullanıcı onayıyla yalnız `SERVO11_FUNCTION=61` yazıldı ve geri okundu; servo komutu vermeden AUX3 çıkışı 1495 µs nötr oldu. Bırakma değeri değişmedi: kanal11 800 µs, 0,3 s sonra 1500 µs. ARM/mod/servo komutu verilmedi.

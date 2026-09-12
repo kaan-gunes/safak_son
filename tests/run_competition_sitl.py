@@ -139,6 +139,7 @@ def main():
             return decision
         rt.controller.step=audited_step
         rt.start()
+        rt.state.camera_info = {'model':'SITL-SYNTHETIC','vision_backend':'opencv-color'}
         def camera():
             fid=0; last=-1
             while not stop.wait(.04):
@@ -167,7 +168,9 @@ def main():
                                      and rt.controller.state=='VERIFYING')):
                         ds.append(Detection(color+'_hedef',.95,box))
                 fid+=1
-                rt.mailbox.put(Frame(fid,at,time.monotonic(),image,tuple(ds),'SITL SYNTHETIC'))
+                # Production flight gate accepts only the OpenCV path.  The SITL
+                # image is synthetic, but it exercises that same runtime path.
+                rt.mailbox.put(Frame(fid,at,time.monotonic(),image,tuple(ds),'OPENCV'))
         threading.Thread(target=camera,daemon=True).start()
         until=time.monotonic()+55
         while time.monotonic()<until:
@@ -181,6 +184,12 @@ def main():
         (root/'mission-comparison.json').write_text(json.dumps({'expected':[vars(x) for x in plan.items], 'actual':[vars(x) for x in actual.items]},indent=2))
         if mission_digest(actual) != mission_digest(plan):
             raise RuntimeError('SITL rota parmak izi farklı; mission-comparison.json')
+        problem=rt.wait_for_flight_preflight(10)
+        if problem:
+            raise RuntimeError('SITL zorunlu uçuş ön kontrolü: '+problem)
+        problem=rt.wait_for_camera_preflight(10)
+        if problem:
+            raise RuntimeError('SITL zorunlu kamera ön kontrolü: '+problem)
         stop.wait(.5)
         ground.mav.set_mode_send(1,1,3)
         stop.wait(1.)

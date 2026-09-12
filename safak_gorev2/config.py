@@ -177,6 +177,18 @@ class Config:
             raise ValueError("Bırakma yüksekliği alt sınırdan yeterince büyük olmalı")
         if c.max_lock_frame_gap_s > c.frame_timeout_s:
             raise ValueError("Kilit kare aralığı görüntü zaman aşımını aşamaz")
+        # Alçalma kp_height ile P-kontrollü: bırakma penceresine girerken
+        # istenen yavaşlama kp_height*max_descent_mps kadardır. Düşey rampa
+        # sınırı bundan küçükse araç pencereyi aşıp alt sınıra iner.
+        if c.kp_height*c.max_descent_mps > c.max_accel_mps2:
+            raise ValueError("Alçalma hızı düşey rampa sınırından hızlı: "
+                             "kp_height*max_descent_mps <= max_accel_mps2 olmalı")
+        # Rampa sınırıyla durma mesafesi bırakma penceresinin yarı genişliğini
+        # aşarsa araç pencereyi geçip minimum_camera_height_m'ye sarkar ve
+        # görsel yükseklik alt sınırı aborta düşer.
+        if c.max_descent_mps**2/(2*c.max_accel_mps2) > c.height_tolerance_m:
+            raise ValueError("Alçalma durma mesafesi bırakma penceresinden büyük: "
+                             "max_descent_mps^2/(2*max_accel_mps2) <= height_tolerance_m olmalı")
         if self.link.source_system == self.link.target_system:
             raise ValueError("Pi ve Pixhawk MAVLink sistem kimlikleri farklı olmalı")
         if self.web.fps > 30 or not 20 <= self.web.jpeg_quality <= 95:

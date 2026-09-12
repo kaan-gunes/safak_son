@@ -22,6 +22,18 @@ class CompetitionLink(MavlinkLink):
         self.search_speed_sent_at = None
         self.search_speed_request_at = None
         self.fc_messages = deque(maxlen=30)
+        # Uçuş başlamadan önce FC rotasını tek bir eski okumaya güvenmeden
+        # yeniden indiririz. İki aynı tam okuma yarışma başlangıç kapısıdır.
+        self.last_mission_refresh = -float('inf')
+        self.mission_generation = 0
+        self.mission_stable_reads = 0
+        self.last_mission_digest = None
+        self.mission_loaded_at = None
+        # Süreli kırmızı servo yük takılmadan önce nötrde kararlı olmalı.
+        # Bu kontrol yalnız başlangıç içindir; gerçek bırakma darbesini bozmaz.
+        self.servo_outputs = {}
+        self.servo_output_at = None
+        self.servo_neutral_since = {}
 
     def control_fallback_mode(self):
         # Kumanda AUTO'da kalırken LOITER'a zorlamak, gaz kolu düşükse sert
@@ -48,6 +60,16 @@ class CompetitionLink(MavlinkLink):
             self._neutralize(now)
             self._status(self.pending['color'], 'UNCERTAIN')
             self.pending = None
+        # Mission Planner son anda LAND/waypoint yazarsa önceden alınmış rota
+        # bellekte kalmasın. Yalnız yerde ve DISARM iken salt okunur yenileme.
+        t = self.store.snapshot()
+        if (self.allow_control and self.store.autopilot_confirmed and not t.armed
+                and self.store.mission is not None and self.mission_count is None
+                and self.mission_stable_reads < 2
+                and now-self.last_mission_refresh >= 1.0):
+            self.connection.mav.mission_request_list_send(
+                self.cfg.link.target_system, self.cfg.link.target_component)
+            self.last_mission_refresh = now
 
     def _shutdown_outputs(self):
         self._neutralize(time.monotonic())
@@ -106,6 +128,25 @@ class CompetitionLink(MavlinkLink):
                 return color+' nötr PWM otopilot sınırlarında değil'
         return None
 
+    def startup_servo_problem(self, now=None):
+        """Yük takılmadan/ARM'dan önce süreli servonun nötr çıkışını doğrula."""
+        if self.options.actuator != 'servo':
+            return None
+        now = time.monotonic() if now is None else now
+        for color in self.options.payloads:
+            s = self.options.servos[color]
+            if s.neutral_pwm is None:
+                continue
+            output = self.servo_outputs.get(s.channel)
+            if output is None or self.servo_output_at is None or now-self.servo_output_at > .5:
+                return color+' servo çıkışı okunuyor; yükü takmayın'
+            if abs(output-s.neutral_pwm) > 25:
+                return f'{color} servo nötr değil: {output} us; yükü takmayın'
+            since = self.servo_neutral_since.get(color)
+            if since is None or now-since < 2.0:
+                return color+' servo nötr kararlılığı bekleniyor; yükü takmayın'
+        return None
+
     def _safe(self, now, mode):
         t = self.store.snapshot()
         m = self.store.mission
@@ -121,10 +162,18 @@ class CompetitionLink(MavlinkLink):
             self.payload_status[color] = status
 
     def ingest(self, msg, now):
+        previous_mission = self.store.mission
         super().ingest(msg, now)
         if msg.get_srcSystem() != self.cfg.link.target_system or msg.get_srcComponent() != self.cfg.link.target_component:
             return
         kind = msg.get_type()
+        if self.store.mission is not None and self.store.mission is not previous_mission:
+            digest = mission_digest(self.store.mission)
+            self.mission_stable_reads = self.mission_stable_reads+1 if digest == self.last_mission_digest else 1
+            self.last_mission_digest = digest
+            self.mission_generation += 1
+            self.mission_loaded_at = now
+            self.last_mission_refresh = now
         if kind == 'STATUSTEXT' and self.options.strategy == 'center':
             with self.store.lock:
                 self.fc_messages.append({'at': now, 'severity': msg.severity, 'text': msg.text})
@@ -148,6 +197,18 @@ class CompetitionLink(MavlinkLink):
                        for suffix in ('FUNCTION','MIN','MAX')}
             if name in allowed:
                 self.servo_params[name] = msg.param_value
+        if kind == 'SERVO_OUTPUT_RAW' and msg.port == 0:
+            self.servo_output_at = now
+            for color in self.options.payloads:
+                s = self.options.servos[color]
+                if s.channel is None:
+                    continue
+                output = getattr(msg, f'servo{s.channel}_raw', None)
+                self.servo_outputs[s.channel] = output
+                if s.neutral_pwm is not None and output is not None and abs(output-s.neutral_pwm) <= 25:
+                    self.servo_neutral_since.setdefault(color, now)
+                else:
+                    self.servo_neutral_since.pop(color, None)
         pending = self.pending
         if pending is None:
             return
@@ -188,7 +249,8 @@ class CompetitionLink(MavlinkLink):
                         and speed == self.options.center_search_speed_mps and slot == t.rc_slot
                         and self._safe(now, 'AUTO') and self.hardware_problem() is None
                         and t.mission_seq is not None
-                        and self.store.mission.takeoff_seq <= t.mission_seq <= self.options.search_end_seq):
+                        and self.options.search_start_seq is not None
+                        and self.options.search_start_seq <= t.mission_seq <= self.options.search_end_seq):
                     with self.store.lock:
                         self.search_speed_status = 'PENDING'
                         self.search_speed_request_at = now

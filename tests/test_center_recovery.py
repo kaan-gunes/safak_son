@@ -14,9 +14,14 @@ def speed_options(options):
     return replace(options, strategy='center', center_search_speed_mps=1.5)
 
 
-def test_deployed_center_profiles_use_requested_two_point_five_mps():
-    for path in ('config/ana-gorev.json', 'config/ana-imx708.json',
-                 'config/ana-opencv-test.json', 'config/ana-aux1-only.json'):
+def test_active_center_profile_uses_requested_three_point_five_mps():
+    _, opts = Options.load('config/ana-imx708.json')
+    assert opts.center_search_speed_mps == 3.5
+
+
+def test_backup_center_profiles_keep_their_independent_speed():
+    for path in ('config/ana-gorev.json', 'config/ana-opencv-test.json',
+                 'config/ana-aux1-only.json'):
         _, opts = Options.load(path)
         assert opts.center_search_speed_mps == 2.5
 
@@ -115,3 +120,30 @@ def test_center_speed_waits_before_takeoff_sequence(cfg, options, plan):
     c = ready(cfg, speed_options(options), plan)
     d = c.step(100, telemetry(100, mission_seq=0), (), 0, 100, plan)
     assert not d.actions
+
+
+def test_wp2_transit_stays_fast_then_seq3_sets_search_speed(cfg, options, plan):
+    opts = replace(speed_options(options), search_start_seq=3, search_end_seq=3)
+    c = ready(cfg, opts, plan)
+    # Seq2, WP2'ye giden bacaktır: geçici 2,5 m/s ve hedef devralma yok.
+    for i in range(4):
+        now = 100+i*.05
+        d = c.step(now, telemetry(now, mission_seq=2), (candidate(i, now),), i, now, plan)
+        assert not d.actions and c.child is None
+    # WP2 tamamlanıp FC seq3'e geçince önce tarama hızı istenir.
+    now = 100.25
+    d = c.step(now, telemetry(now, mission_seq=3), (candidate(5, now),), 5, now, plan)
+    assert d.state == 'SET_SEARCH_SPEED'
+    assert d.actions == (Action('search_speed', (1.5, 6)),)
+
+
+def test_link_refuses_search_speed_on_wp2_transit(cfg, options, plan, tmp_path):
+    opts = replace(speed_options(options), search_start_seq=3, search_end_seq=3)
+    link, conn, _ = link_ready(cfg, opts, plan, tmp_path)
+    link.store.value = telemetry(100, mission_seq=2)
+    link._perform(100, (Action('search_speed', (1.5, 6)),))
+    conn.mav.command_long_send.assert_not_called()
+
+    link.store.value = telemetry(100.1, mission_seq=3)
+    link._perform(100.1, (Action('search_speed', (1.5, 6)),))
+    conn.mav.command_long_send.assert_called_once_with(1, 1, 178, 0, 1, 1.5, -1, 0, 0, 0, 0)

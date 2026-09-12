@@ -6,7 +6,7 @@ from ..geometry import bbox_iou
 from ..types import Action, Decision
 from .config import COLORS, PAYLOAD
 from ..camera_contract import metric_missing
-from .route import RouteProgress, area_allowed, mission_digest, mission_digest_problem
+from .route import RouteProgress, area_allowed, mission_digest, mission_contract_problem
 
 
 class DualController:
@@ -150,18 +150,9 @@ class DualController:
                 self.route.update(t, now, self.cfg.control.telemetry_timeout_s)
             return self.decision(reason='AUTO dönüş/bitiş/LAND sürüyor; yük komutları: '+str(len(self.done))+'/2')
         issue = telemetry_problem(t, now, self.cfg) or problem
-        route_problem = mission_digest_problem(mission, self.options.mission_fingerprint)
+        route_problem = mission_contract_problem(mission, self.options)
         if route_problem:
             issue = issue or route_problem
-        elif (self.options.search_end_seq is None or self.options.search_end_seq >= mission.land_seq
-              or any(mission.current_command(s) != 16 for s in range(
-                  self.options.search_start_seq or 0, self.options.search_end_seq+1))):
-            issue = 'Tarama bölümü yalnız waypoint içermeli ve son LAND öncesinde bitmeli'
-        elif self.options.search_scope == 'mission' and (
-                self.options.search_start_seq is None or
-                not mission.takeoff_seq < self.options.search_start_seq <= self.options.search_end_seq or
-                self.options.search_end_seq != mission.land_seq-1):
-            issue = 'Rota taraması TAKEOFF sonrası seçilen waypointten LAND öncesine kadar olmalı'
         if issue:
             self.reset_holds()
             if self.started:
@@ -213,7 +204,11 @@ class DualController:
         if (self.options.strategy == 'center' and self.options.center_search_speed_mps is not None
                 and not self.search_speed_set and self.child is None and t.mode == 'AUTO'
                 and t.mission_seq is not None
-                and mission.takeoff_seq <= t.mission_seq <= self.options.search_end_seq):
+                and self.options.search_start_seq is not None
+                and self.options.search_start_seq <= t.mission_seq <= self.options.search_end_seq):
+            # search_start_seq'den önceki transit bacağı FC'nin WPNAV_SPEED
+            # değerinde kalır. Örneğin start=3 iken TAKEOFF→WP2 hızlı,
+            # WP2 tamamlanıp seq3 başladığında tarama hızı uygulanır.
             self.speed_requested_at = now
             self.transition('SET_SEARCH_SPEED', now, 'Ana görev için geçici AUTO tarama hızı ayarlanıyor')
             return self.decision(Action('search_speed', (self.options.center_search_speed_mps, self.rc_slot)))

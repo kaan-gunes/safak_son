@@ -14,6 +14,7 @@ from .config import PAYLOAD
 from .controller import DualController
 from .link import CompetitionLink
 from .payload import PayloadLedger
+from .route import mission_contract_problem, mission_digest
 from .vision import DualVision
 from ..camera_contract import camera_manifest, metric_missing, profile_digest
 
@@ -37,6 +38,9 @@ class CompetitionRuntime(Runtime):
         self.payload_status = self.payload_ledger.statuses()
         self.decision_input = None
         self.state.mode = mode
+        self.flight_gate_open = False
+        self.flight_preflight_failure = None
+        self.flight_preflight_digest = None
 
     def start(self, connect=True):
         if connect:
@@ -44,6 +48,76 @@ class CompetitionRuntime(Runtime):
                                         self.options, self.payload_ledger)
             self.link.start()
         super().start(connect=False)
+
+    def wait_for_flight_preflight(self, timeout_s=20.0):
+        """İki tam rota okuması ve kırmızı servo nötrü olmadan uçuşu açma."""
+        deadline = time.monotonic()+timeout_s
+        last_wait = 'Pixhawk bağlantısı ve canlı rota okunuyor'
+        while time.monotonic() < deadline and not self.stop.is_set():
+            now = time.monotonic()
+            link = self.link
+            if link is None:
+                return 'Pixhawk bağlantısı kurulmadı'
+            if link.failure:
+                return link.failure
+            t = self.telemetry.snapshot()
+            if t.armed:
+                return 'Araç ön kontrol bitmeden ARM edildi; DISARM edip programı yeniden başlatın'
+            mission = self.telemetry.mission
+            if mission is not None:
+                problem = mission_contract_problem(mission, self.options)
+                if problem:
+                    return problem
+            common = self.telemetry.preflight_problem()
+            hardware = link.hardware_problem()
+            servo = link.startup_servo_problem(now)
+            if mission is None:
+                last_wait = common or 'AUTO rotası henüz okunmadı'
+            elif link.mission_stable_reads < 2:
+                last_wait = 'Canlı rota ikinci kez okunup kararlılığı doğrulanıyor'
+            elif t.landed != 1:
+                last_wait = 'Aracın yerde olduğu doğrulanıyor'
+            elif t.heartbeat_at is None or now-t.heartbeat_at > self.cfg.control.heartbeat_timeout_s:
+                last_wait = 'Pixhawk heartbeat güncel değil'
+            elif common:
+                last_wait = common
+            elif hardware:
+                last_wait = hardware
+            elif servo:
+                last_wait = servo
+            else:
+                self.flight_preflight_digest = mission_digest(mission)
+                return None
+            self.stop.wait(.05)
+        return self.flight_preflight_failure or 'Uçuş ön kontrolü zaman aşımı: '+last_wait
+
+    def wait_for_camera_preflight(self, timeout_s=8.0):
+        """İlk gerçek ve taze kamera karesi gelmeden kontrol kapısını açma."""
+        deadline = time.monotonic()+timeout_s
+        while time.monotonic() < deadline and not self.stop.is_set():
+            now = time.monotonic()
+            if self.telemetry.snapshot().armed:
+                return 'Kamera ön kontrolü bitmeden ARM edildi; DISARM edip programı yeniden başlatın'
+            with self.state.lock:
+                frame_at = self.state.frame_at
+                backend = self.state.backend
+                camera_info = self.state.camera_info
+                pipeline_error = self.state.pipeline_error
+            if pipeline_error:
+                return pipeline_error
+            if backend == 'OPENCV' and camera_info and 0 <= now-frame_at <= self.cfg.control.frame_timeout_s:
+                self.flight_gate_open = True
+                return None
+            self.stop.wait(.02)
+        return self.flight_preflight_failure or 'Kamera ilk taze kareyi zamanında üretmedi'
+
+    def fail_preflight(self, problem):
+        if self.flight_preflight_failure is None:
+            self.flight_preflight_failure = problem
+            self.state.pipeline_error = 'UÇUŞ BAŞLATILMADI: '+problem
+            self.state.event('PREFLIGHT_FAILED', self.state.pipeline_error)
+            print('HATA: '+self.state.pipeline_error, flush=True)
+        self.stop.set()
 
     def vision_loop(self):
         calibration = (Calibration.load(self.cfg.camera.calibration_file)
@@ -89,7 +163,16 @@ class CompetitionRuntime(Runtime):
                 self.payload_status = self.link.snapshot_status()
             if self.mode == 'observe':
                 decision = Decision('OBSERVING', 'İki renk izleniyor; uçuş ve servo komutu kapalı')
+            elif not self.flight_gate_open:
+                decision = Decision('WAIT_AUTO', 'Zorunlu canlı rota/servo ön kontrolü sürüyor')
             else:
+                if not self.controller.started:
+                    route_problem = mission_contract_problem(self.telemetry.mission, self.options)
+                    servo_problem = (self.link.startup_servo_problem(now)
+                                     if self.link and not t.armed else None)
+                    if route_problem or servo_problem:
+                        self.fail_preflight(route_problem or servo_problem)
+                        return
                 problem = self.state.pipeline_error or self.telemetry.preflight_problem()
                 if self.link:
                     problem = problem or self.link.hardware_problem()
@@ -137,18 +220,20 @@ class CompetitionRuntime(Runtime):
                 active = candidate.color in self.controller.required_targets
                 color = (0,220,220) if active else (130,130,130)
                 if candidate.bridged:
-                    # Tahmin kutusu her zaman turuncu ve TAKIP yazılıdır; operatör
-                    # bunu gerçek renk doğrulaması sanmasın.
+                    # Köprülenmiş tahmin turuncu kalır; etiket metni operatörün
+                    # istediği sade renk/mesafe biçimini bozmaz.
                     color = (0,150,255) if active else (110,110,140)
                 cv2.rectangle(image,(a,b),(c,d),color,2)
-                label = ('TAKIP ' if candidate.bridged else
-                         'AKTIF HEDEF ' if active else 'PASIF HEDEF ')+candidate.color
+                label = self.candidate_label(candidate)
                 cv2.putText(image,label,(max(0,a),min(h-120,d+20)),cv2.FONT_HERSHEY_SIMPLEX,.5,color,2)
                 if debug:
                     for offset,text in enumerate(self.debug_lines(candidate)):
                         cv2.putText(image,text,(max(0,a),min(h-116,d+38+offset*16)),
                                     cv2.FONT_HERSHEY_SIMPLEX,.4,color,1)
-            lines = [self.options.strategy+' / '+self.options.actuator+' / '+self.state.decision.state,
+            telemetry = self.telemetry.snapshot()
+            altitude = self.altitude_label(telemetry, time.monotonic(),
+                                           self.cfg.control.telemetry_timeout_s)
+            lines = [self.options.strategy+' / '+self.options.actuator+' / '+self.state.decision.state+' / '+altitude,
                      'KIRMIZI YUK: '+self.payload_status.get('kirmizi','BEKLIYOR'),
                      'MAVI YUK: '+self.payload_status.get('mavi','BEKLIYOR'),
                      'ACK/PWM = komut kaniti; fiziksel dusus sensoru YOK']
@@ -162,6 +247,21 @@ class CompetitionRuntime(Runtime):
             if ok:
                 self.state.jpeg_put(encoded.tobytes(),frame.captured_at,frame.id)
             self.stop.wait(1/self.cfg.web.fps)
+
+    @staticmethod
+    def candidate_label(candidate):
+        """Panel kutusunda yalnız renk ve varsa PnP kamera mesafesini göster."""
+        label = candidate.color.upper()
+        if candidate.metric is not None:
+            label += f' / {candidate.metric.camera_height_m:.1f} m'
+        return label
+
+    @staticmethod
+    def altitude_label(telemetry, now, timeout_s):
+        age = now-telemetry.global_at
+        if telemetry.relative_alt_m is None or not 0 <= age <= timeout_s:
+            return 'IRTIFA --'
+        return f'IRTIFA {telemetry.relative_alt_m:.1f} m'
 
     @staticmethod
     def debug_lines(candidate):

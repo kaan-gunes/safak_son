@@ -7,6 +7,7 @@ from test_competition import options, plan, candidate, link_ready
 from safak_gorev2.competition.controller import DualController
 from safak_gorev2.competition.config import Options
 from safak_gorev2.competition.route import RouteProgress
+from scripts.route_digest import update_profile_route
 
 
 def full_route(options, plan):
@@ -98,3 +99,20 @@ def test_selected_start_waits_until_waypoint_two_is_passed(cfg, options, plan, s
         d = c.step(now, telemetry(now, mission_seq=3), (candidate(i, now),), i, now, plan)
         if d.state == 'REQUEST_STOP': break
     assert d.state == 'REQUEST_STOP'
+
+
+def test_route_write_preserves_selected_start_and_updates_end(plan):
+    profile = {'search_scope': 'mission', 'mission_fingerprint': 'old',
+               'search_start_seq': 3, 'search_end_seq': 2}
+    changes = update_profile_route(profile, plan, 'new')
+    assert profile == {'search_scope': 'mission', 'mission_fingerprint': 'new',
+                       'search_start_seq': 3, 'search_end_seq': plan.land_seq-1}
+    assert not any(x.startswith('search_start_seq') for x in changes)
+
+
+def test_route_write_repairs_start_outside_new_route(plan):
+    profile = {'search_scope': 'mission', 'mission_fingerprint': 'old',
+               'search_start_seq': 99, 'search_end_seq': 99}
+    update_profile_route(profile, plan, 'new')
+    assert profile['search_start_seq'] == plan.takeoff_seq+1
+    assert profile['search_end_seq'] == plan.land_seq-1

@@ -4,10 +4,10 @@
   "camera_mount_yaw_deg": 180,
   "actuator": "servo",
   "vehicle_type": 13,
-  "sortie_id": "20260912T064602Z-ana-imx708",
-  "mission_fingerprint": "0c63f72a1eca97accbcb9bcbd22d2d012b1b23f25147aa26c78b1ffb2bc72340",
-  "search_start_seq": 2,
-  "search_end_seq": 7,
+  "sortie_id": "20260912T114011Z-ana-imx708",
+  "mission_fingerprint": "c91d1230de8caeb1ff826a2f941d2c071cc555999379fc6914b9772d9e2860a4",
+  "search_start_seq": 3,
+  "search_end_seq": 16,
   "route_reviewed": true,
   "entry_gates": [],
   "finish_gate": [],
@@ -51,5 +51,5 @@
     }
   },
   "search_scope": "mission",
-  "center_search_speed_mps": 2.5
+  "center_search_speed_mps": 3.5
 }

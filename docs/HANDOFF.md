@@ -1,5 +1,98 @@
 # ŞAFAK UAV — yeni sohbet için güncel devir, 8 Eylül 2026
 
+## DEVİR — 12 Eylül kaybedilen uçuş / zorunlu son-şans kapısı
+
+- Kaybedilen uçuşun kaydı `artifacts/failed-flight-20260912/flight.jsonl`.
+  Sortie `20260912T114011Z-ana-imx708` 347 s boyunca `WAIT_AUTO` kaldı:
+  uçuşta yüklü profil digest'i `9280b849…abd90`, FC rotası ise LAND17
+  yaklaşık 14,6 m taşındığı için `c91d1230…e2860a4` idi. Yazılım
+  bu nedenle hiç kontrol devralmadı, servo/hız/hareket eylemi üretmedi ve
+  payload ledger boş kaldı. Kamera/OpenCV çalıştı: 12 mavi + 9 kırmızı
+  aday kaydı var. Hız komutu yetkilendirilmediği için tarama ortancası 6,98,
+  en yüksek 10,17 m/s oldu.
+- Kırmızı yükün açılışta düşmesi görev kodundan önce oldu; kayıtta
+  PWM komutu yok. `SERVO11_FUNCTION=61` RC11 passthrough'tur. Kumanda kapalı
+  son güç döngüsünde RC11 ve AUX3 çıkışı 0 us okundu; uygulama bu
+  donanım/no-signal durumunu yazılımla gideremez. Kalıcı çözüm gecikmeli
+  servo beslemesi/ayrı anahtar/mekanik pimdir. Kullanıcı mili tornavidayla
+  çevirdiği için dişli ve horn hizası da fiziksel olarak doğrulanmadan yük
+  takılmamalı.
+- Uçuş girişine zorunlu canlı kapı eklendi. Program kontrol komutu
+  üretmeden önce FC rotasını iki kez tam ve aynı okur; digest ile
+  `search_start/end` kapsamını, DISARM/LANDED/telemetri/parametreleri,
+  kırmızı servo çıkışının 1500±25 us'ta en az 2 s durmasını ve gerçek
+  OpenCV kameradan taze kareyi ister. Bunlardan biri yoksa süreç exit 2 ile
+  `UÇUŞ BAŞLATILMADI` der; ARM/AUTO'dan önce tam başarı satırı görülmelidir.
+- Yetkili Pi profili ve canlı FC rotası yeniden eşlendi: TAKEOFF1=15 m,
+  WP2–16=15 m, LAND17=1 m, tarama Seq3–16, 3,5 m/s, digest
+  `c91d1230de8caeb1ff826a2f941d2c071cc555999379fc6914b9772d9e2860a4`.
+  Pi `furkan@172.20.10.6`; görev/kayıt kapalı. Yerel 421 geçti/5 atlandı,
+  Pi 379 geçti. Tam ArduCopter 4.6.3 SITL iki temsili yük + doğrudan LAND +
+  DONE: `artifacts/competition-sitl/20260912T171636-center-complete` (119,01 s).
+  Dağıtılan sekiz dosyanın SHA256 değerleri iki tarafta aynı; Pi yedeği
+  `runtime/before-final-gate-20260912/`.
+- Son canlı deneme kumanda kapalıyken doğru olarak reddedildi:
+  `kirmizi servo nötr değil: 0 us; yükü takmayın`. Son açık iş: kumanda
+  açık/LOITER, DISARM ve yükler takılı değilken 1495–1500 us + tam uçuş
+  başarı satırını canlı görmek; sonra horn/mekanizma fiziksel onayı.
+  Kumandasız kamera probe'u reboot sonrası geçti: 20 s, 1021 işlenmiş kare,
+  50,03 FPS, stale0, hata yok; kanıt `artifacts/final-preflight-20260912/`.
+  Son JPEG çok yakın desenli kumaş/yüzeyle dolu; bu muhtemelen aracın yerdeki
+  konumu, fakat saha görüş kabulü değildir. Uçuştan önce lens altı/kadraj
+  merkezi fiziksel olarak tamamen açık görülmelidir.
+  Probe ve görev temiz kapandı. Bu oturumda servo/ARM/mod/FC parametre
+  komutu verilmedi.
+
+## DEVİR — 12 Eylül yeni rota / WP2 hızlı transit / 3,5 m/s tarama
+
+- Pi yeni adreste bulundu: `furkan@192.168.137.145`, proje
+  `/home/furkan/Desktop/safak-gorev2-quad`. Görev ve kayıt süreçleri kapalı;
+  FC salt okunur kontrolde **DISARM/LANDED**. Canlı parametreler
+  `WPNAV_SPEED=1000`, `WPNAV_ACCEL=250`, `SERVO9_FUNCTION=58` ve
+  `SERVO11_FUNCTION=61`; hiçbir parametre/servo/ARM/mod komutu verilmedi.
+- Kullanıcı kararı uygulandı: AUTO kalkıştan sıra2'ye giderken geçici hız
+  komutu yok, dolayısıyla araç FC sınırıyla **10 m/s'ye kadar** transit yapar.
+  Sıra2 bitip `mission_seq=3` olduğunda geçici `DO_CHANGE_SPEED=3.5 m/s`
+  istenir; ACK gelmeden hedef aranmaz. Controller ve MAVLink link katmanı
+  seq2'de hem hedef devralmayı hem hız isteğini ayrı ayrı engeller.
+- Pi profilinin yetkili kopyasında yalnız `search_start_seq=3` ve
+  `center_search_speed_mps=3.5` değiştirildi; Mac profili Pi üzerine rsync
+  edilmedi. `route_digest.py --write` geçerli start3 seçimini koruyup son
+  tarama sırasını LAND-1'e eşleyecek şekilde düzeltildi.
+- Mission Planner'daki canlı rota salt okunur okundu: TAKEOFF1=15 m,
+  WP2–16=15 m, LAND17=1 m; yeni digest
+  `9280b84931937b757c66e66518b76adbdc7156ee2a3ee2839ad446ebf84abd90`.
+  WP3–16 tarama yolu yaklaşık 697 m, 3,5 m/s'de nominal 199 s. En uzak
+  hedef-waypoint→LAND17 doğrudan hattı yaklaşık 195 m.
+- Kullanıcı iki fiziksel yükün yeniden takılı ve hedef bölgesi→LAND17
+  koridorunun boş olduğunu doğruladı. Yeni sortie
+  `20260912T114011Z-ana-imx708`; ledger'da **0 kayıt**. Yetkili Pi profili
+  `start3/end16`, 3,5 m/s ve yeni digest ile güncellendi; canlı FC rotası
+  yeniden okununca **EŞLEŞİYOR** sonucu alındı. Profil Pi→Mac eşlendi ve
+  SHA256 iki tarafta aynı: `c8645c7d…24d29`.
+- Üretim uçuş yolunda eski rastgele test waypointi yoktur. Sabit noktalar
+  yalnız `demo.py` ve test fixture'larında; aktif görev canlı FC rotasını
+  `search_scope=mission` ve digest ile kullanır.
+- Kaynaklar/testler Pi'ye dağıtıldı; hashler eş. Son profil ile `--check`
+  iki tarafta eksiksiz; yerel tam test **415 geçti / 5 atlandı**, Pi tam test
+  **373 geçti**. Gerçek IMX708 probe:
+  20 s, 1020 kare, **50,02 FPS**, stale=0, hata yok, OpenCV p95=3,93 ms.
+  Yedekler `runtime/before-fast-transit-wp2-20260912/`,
+  `runtime/before-search-speed-3p5-20260912/` ve Pi'de
+  `runtime/before-fast-transit-3p5-route-20260912/` ile
+  `runtime/before-final-route-authorize-20260912/`. Görev süreci başlatılmadı;
+  batarya güç döngüsünden sonra önce rota kontrolü, sonra görev açılacak.
+
+## DEVİR — 12 Eylül panel sade hedef etiketi / HOME irtifası
+
+- `/competition` hedef etiketi yalnız renk ve varsa PnP mesafesini gösterir:
+  `MAVI / 5.2 m` veya `KIRMIZI / 5.2 m`; metrik çözüm yoksa sayı uydurulmaz.
+  Taze `GLOBAL_POSITION_INT.relative_alt` hem görüntü şeridinde hem HTML'de
+  gösterilir, eski/eksik telemetride `—` olur.
+- Pi'ye yedek alınarak dağıtıldı; dosya hashleri eş, ilgili Pi testleri
+  **87 geçti** ve değişiklik sonrası tam Pi dizisi yukarıdaki 373 sonucu verdi.
+  Pi yedeği `runtime/before-panel-label-altitude-20260912/`.
+
 ## DEVİR — 12 Eylül ANA GÖREV İLK BAŞARILI UÇUŞU (buradan başla)
 
 **Ana görev sahada ilk kez tamamlandı.** Sortie `20260912T064602Z-ana-imx708`,
@@ -68,18 +161,26 @@
 
 ### Saha işletim sırası (Pi terminali)
 
+Tek giriş noktası **`scripts/saha.sh`**. Her adım Hailo ortamını kendisi
+kurar, `PYTHONPATH`/`MAVLINK20`'yi kendisi verir ve FC portunu ikinci kez
+açacak adımları görev süreci çalışıyorsa reddeder. Elle `source setup_env.sh`
+yazmaya gerek yok.
+
 ```bash
-# 0) Rota Mission Planner'da DEĞİŞTİYSE (görev kapalı, araç DISARM):
-python scripts/route_digest.py --write config/ana-imx708.json
-# 1) Yükler yeniden takıldıysa YENİ sortie_id (defterde kaydı olan kimlik reddedilir)
-# 2) Ortam:
-cd /home/furkan/Documents/proje/hailo-rpi5-examples && source ./setup_env.sh \
-  && cd /home/furkan/Desktop/safak-gorev2-quad \
-  && export PYTHONPATH="$PWD/runtime/python:$PWD:$PYTHONPATH"
-# 3) python -m safak_gorev2.competition.main --config config/ana-imx708.json --check
-# 4) ... --mode flight
-# 5) İniş sonrası: python3 scripts/ucus_raporu.py && python3 scripts/pnp_teshis.py
+cd /home/furkan/Desktop/safak-gorev2-quad
+
+bash scripts/saha.sh durum     # profili doğrula + süreçleri gör (hiçbir şey başlatmaz)
+bash scripts/saha.sh rota      # SADECE Mission Planner'da rota değiştiyse
+bash scripts/saha.sh kontrol   # uçuş kapısı; tam başarı satırı görülmeden ARM/AUTO yok
+bash scripts/saha.sh ucus      # görev
+bash scripts/saha.sh rapor     # iniş sonrası uçuş raporu + PnP teşhisi
+bash scripts/saha.sh gozlem    # kamera/tespit bak, uçuş komutu üretmez
+bash scripts/saha.sh test      # Pi testleri
 ```
+
+Yükler yeniden takıldıysa **yeni `sortie_id`** gerekir; defterde kaydı olan
+kimlik reddedilir. Farklı profil için `PROFIL=config/hizli-gorev.json bash
+scripts/saha.sh ...`.
 
 **İkinci uçuş için program MUTLAKA yeniden başlatılmalı:** iniş sonrası durum
 `DONE`/`INCOMPLETE` kalıcıdır, aynı süreç bir daha devralmaz.
@@ -95,9 +196,15 @@ cd /home/furkan/Documents/proje/hailo-rpi5-examples && source ./setup_env.sh \
 
 ### Açık işler
 
-- **`max_descent_mps=0.25` en büyük zaman gideri.** 15 m→5 m alçalma ~40 s;
-  hedef başına. Büyük sahada 0,8–1,0 m/s değerlendirilmeli. **Kullanıcı kararı
-  bekliyor, değiştirilmedi.**
+- ~~`max_descent_mps=0.25` en büyük zaman gideri.~~ **12 Eylül'de kullanıcı
+  onayıyla çözüldü:** `max_descent_mps=0.8`, `max_accel_mps2=0.35`. İkisi
+  birlikte olmak zorunda, tek başına hız artışı aşım yapar. Alçalma 42,7 s →
+  19,6 s; iki hedef + bir tırmanma 104 s → 57 s (**47 s kazanç**). Simülasyonda
+  gerçek aşım yok: en düşük irtifa 5,16 m, `minimum_camera_height_m=3.0`
+  tabanına 2,16 m pay — her hızda aynı, çünkü `kp_height` P-yasası 7,67 m'de
+  yavaşlamaya başlar ve hız sınırı yere yakın hiç bağlayıcı olmaz.
+  **Sahada doğrulanacak:** `bash scripts/saha.sh rapor` ile BIRAKMA ANI
+  yüksekliği 4,0–6,0 penceresinde mi.
 - Büyük saha için irtifa/hız seçimi. Fren modeli `v²/(2·2,5)+0,3v` saha
   kaydıyla doğrulandı (2,49 m/s→1,9 m; 7,04 m/s→11,9 m). Hedefin frenden sonra
   kadrajda kalması için: 10 m'de 4,6 m/s, 15 m'de 5,8 m/s, 20 m'de 6,8 m/s,

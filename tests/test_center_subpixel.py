@@ -12,10 +12,12 @@ from safak_gorev2.geometry import Calibration, order_corners, body_to_ned, Targe
 from safak_gorev2.types import Detection, Frame, PoseSample
 
 
-def rendered_square(side, height, yaw=.3, mount=180, plane_tilt=0.):
+def rendered_square(side, height, yaw=.3, mount=180, plane_tilt=0., max_plane_tilt=None):
     cfg, opt = Options.load('config/ana-imx708.json')
     cal = Calibration.load(cfg.camera.calibration_file)
-    camera = replace(cfg.camera, target_side_m=side)
+    camera = replace(cfg.camera, target_side_m=side,
+                     **({} if max_plane_tilt is None else
+                        {'max_plane_tilt_deg': max_plane_tilt}))
     angles = (.04, -.05, yaw)
     rotation = body_to_ned(*angles)
     optical = (np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]])
@@ -43,7 +45,11 @@ def rendered_square(side, height, yaw=.3, mount=180, plane_tilt=0.):
 @pytest.mark.parametrize('side,height', [(1., 10.), (2., 15.), (1., 15.)])
 @pytest.mark.parametrize('mount', [0, 180])
 def test_subpixel_recovers_noisy_corners_without_relaxing_pnp(side, height, mount):
-    geometry, frame, detection, q, pose, ground = rendered_square(side, height, mount=mount)
+    # Bu regresyon, alt piksel kurtarmanın eklendiği eski 15° kapıyı
+    # sınar. Aktif saha kapısı 30° olduğu için aynı gürültülü örnekler
+    # zaten ilk denemede kabul edilir ve "recovered" doğal olarak sıfır olur.
+    geometry, frame, detection, q, pose, ground = rendered_square(
+        side, height, mount=mount, max_plane_tilt=15.)
     virtual = replace(pose, roll=-pose.roll, pitch=-pose.pitch, yaw=pose.yaw+math.pi) if mount==180 else pose
     rng = np.random.default_rng(147)
     old_count = recovered = 0

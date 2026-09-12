@@ -1,7 +1,8 @@
 """Pixhawk'taki rotayı salt okunur okur; irtifaları ve mission_digest'i yazar.
 
-`--write <profil>` verilirse yalnız `mission_fingerprint` alanını günceller.
-FC'ye hiçbir komut gönderilmez; ARM/mod/rota yazımı yoktur.
+`--write <profil>` parmak izini ve mission kapsamındaki tarama aralığını
+günceller. Kullanıcının geçerli tarama başlangıcı korunur; LAND öncesi
+bitiş rotadan türetilir. FC'ye hiçbir komut gönderilmez; ARM/mod/rota yazımı yoktur.
 """
 import argparse
 import json
@@ -15,6 +16,33 @@ from safak_gorev2.mavlink_io import validate_mission
 from safak_gorev2.types import MissionItem
 
 DEVICE = '/dev/serial/by-id/usb-Hex_ProfiCNC_CubeOrange_220047001251313132383631-if00'
+
+
+def update_profile_route(profile, plan, digest):
+    """Profilin rota alanlarını güncelle; geçerli kullanıcı başlangıcını koru."""
+    previous = profile.get('mission_fingerprint')
+    profile['mission_fingerprint'] = digest
+    changes = [f'mission_fingerprint {previous} -> {digest}']
+    if profile.get('search_scope') != 'mission':
+        return changes
+
+    first_waypoint = (plan.takeoff_seq or 0)+1
+    search_end = plan.land_seq-1
+    if first_waypoint > search_end:
+        raise ValueError('Rotada TAKEOFF ile LAND arasında tarama waypointi yok')
+
+    # start=3 gibi saha kararı, rota uzayıp/kısalsa da geçerli olduğu sürece
+    # korunur. Eksik veya yeni rotanın dışında kalmış başlangıç ise ilk
+    # normal waypointe güvenli biçimde döner. Bitiş her zaman LAND-1'dir.
+    search_start = profile.get('search_start_seq')
+    if type(search_start) is not int or not first_waypoint <= search_start <= search_end:
+        search_start = first_waypoint
+    wanted = {'search_start_seq': search_start, 'search_end_seq': search_end}
+    for key, value in wanted.items():
+        if profile.get(key) != value:
+            changes.append(f'{key} {profile.get(key)} -> {value}')
+            profile[key] = value
+    return changes
 
 
 def read_plan(device, target=1):
@@ -61,21 +89,10 @@ def main():
     if args.write:
         path = Path(args.write)
         profile = json.loads(path.read_text())
-        previous = profile.get('mission_fingerprint')
-        profile['mission_fingerprint'] = digest
-        changes = [f'mission_fingerprint {previous} -> {digest}']
-        # Rota uzunluğu değişince tarama aralığı da değişir. mission kapsamında
-        # aralık rotadan tek anlamlı çıkar: TAKEOFF sonrası ilk waypointten
-        # LAND öncesine kadar. field kapsamında seçim kullanıcınındır.
-        if profile.get('search_scope') == 'mission':
-            wanted = {'search_start_seq': (plan.takeoff_seq or 0)+1,
-                      'search_end_seq': plan.land_seq-1}
-            for key, value in wanted.items():
-                if profile.get(key) != value:
-                    changes.append(f'{key} {profile.get(key)} -> {value}')
-                    profile[key] = value
-            if wanted['search_start_seq'] > wanted['search_end_seq']:
-                raise SystemExit('Rotada TAKEOFF ile LAND arasında tarama waypointi yok')
+        try:
+            changes = update_profile_route(profile, plan, digest)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
         path.write_text(json.dumps(profile, ensure_ascii=False, indent=2)+'\n')
         print(f'\n{path}:')
         for line in changes:

@@ -24,6 +24,23 @@ def mission_digest_problem(mission, expected):
             'yalnız mission_digest() kullanın; rota/irtifa değiştiyse yeniden okuyup onaylayın')
 
 
+def mission_contract_problem(mission, options):
+    """Profilin bütün tarama aralığını canlı FC rotasına karşı doğrula."""
+    problem = mission_digest_problem(mission, options.mission_fingerprint)
+    if problem:
+        return problem
+    if (options.search_start_seq is None or options.search_end_seq is None
+            or options.search_end_seq >= mission.land_seq
+            or any(mission.current_command(seq) != 16
+                   for seq in range(options.search_start_seq, options.search_end_seq+1))):
+        return 'Tarama bölümü yalnız waypoint içermeli ve son LAND öncesinde bitmeli'
+    if (options.search_scope == 'mission'
+            and (not mission.takeoff_seq < options.search_start_seq <= options.search_end_seq
+                 or options.search_end_seq != mission.land_seq-1)):
+        return 'Rota taraması TAKEOFF sonrası seçilen waypointten LAND öncesine kadar olmalı'
+    return None
+
+
 def cross(a, b):
     return a[0]*b[1] - a[1]*b[0]
 
