@@ -124,6 +124,13 @@ class Options:
     # yenilenir; aynı istek bu aralıktan sık tekrarlanmaz.
     search_speed_margin_mps: float = 1.0
     search_speed_retry_s: float = 2.0
+    # GPS_RAW_INT durum alanı otopilottan anlık olarak sahte gelebiliyor:
+    # 12 Eylül akşam uçuşunda örneklerin %3,4'ü fix=1/uydu=0/HDOP=100 okundu,
+    # aynı anda EKF çözümü geçerliydi ve gerçek alıcı 16 uyduyla RTK'daydı.
+    # Tek örnekte iptal etmek görevi öldürüyordu. GPS sorunu bu süre boyunca
+    # SÜRERSE iptal edilir; EKF, konum tazeliği ve heartbeat kapıları anlık
+    # kalır. 0 = eski davranış (ilk örnekte iptal).
+    gps_grace_s: float = 1.0
     # Sıralı, sonlu yönlü geçiş kapıları: [[latA,lonA],[latB,lonB]].
     # A->B doğrultusunun negatif yanından pozitif yanına geçilir.
     entry_gates: tuple = ()
@@ -196,6 +203,9 @@ class Options:
             raise ValueError('quick_frames pozitif tam sayı olmalı')
         if type(self.quick_verify_frames) is not int or self.quick_verify_frames < 1:
             raise ValueError('quick_verify_frames pozitif tam sayı olmalı')
+        if (not isinstance(self.gps_grace_s, (int, float)) or not math.isfinite(self.gps_grace_s)
+                or not 0 <= self.gps_grace_s <= 3):
+            raise ValueError('gps_grace_s 0-3 s aralığında sonlu bir sayı olmalı')
         for name in ('search_speed_margin_mps', 'search_speed_retry_s',
                      'quick_hold_s', 'release_ack_timeout_s', 'quick_iou', 'stop_speed_mps',
                      'stop_hold_s', 'stop_timeout_s', 'verify_timeout_s', 'retry_delay_s', 'quick_verify_s'):

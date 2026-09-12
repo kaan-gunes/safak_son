@@ -2,6 +2,11 @@ from dataclasses import replace
 import math
 
 from ..controller import Controller, ContinuousHold, telemetry_problem
+
+# Korunan safak_gorev2/controller.py:67'deki metin. Orası dondurulmuş olduğu
+# için burada tekrarlanıyor; test_gps_problem_text_matches_legacy eşleşmeyi
+# doğrular, metin değişirse test yüksek sesle kırılır.
+GPS_PROBLEM = 'GPS çözümü/HDOP merkezleme için yeterli değil'
 from ..geometry import bbox_iou
 from ..types import Action, Decision
 from .config import COLORS, PAYLOAD
@@ -41,6 +46,7 @@ class DualController:
         self.retry_until = {c: -math.inf for c in COLORS}
         self.search_speed_set = False
         self.speed_requested_at = -math.inf
+        self.gps_issue_since = None  # Anlık GPS sahte karesi görevi öldürmesin.
         self.lap = 1  # Uçulan tarama turu; search_laps bunu sınırlar.
         self.started_at = None  # AUTO devralma anı; görev süresi buradan sayılır.
         # Köprüleme yalnız taramada, yalnız sayaç sıfırlanmasını önlemek için
@@ -153,6 +159,20 @@ class DualController:
         route_problem = mission_contract_problem(mission, self.options)
         if route_problem:
             issue = issue or route_problem
+        if issue == GPS_PROBLEM:
+            # GPS_RAW_INT durum alanı otopilottan anlık olarak sahte gelebiliyor
+            # (fix=1/uydu=0/HDOP=100) hâlbuki EKF çözümü geçerli ve gerçek alıcı
+            # RTK'da. Tek örnekte iptal etmek görevi öldürüyor. Sorun
+            # gps_grace_s boyunca SÜRERSE iptal edilir. Bekleme süresince kilit
+            # kanıtı birikmez; EKF, konum tazeliği, heartbeat, mod ve RC
+            # kapıları telemetry_problem içinde anlık kalmaya devam eder.
+            self.gps_issue_since = now if self.gps_issue_since is None else self.gps_issue_since
+            if now-self.gps_issue_since < self.options.gps_grace_s:
+                self.reset_holds()
+                return self.decision(reason=issue+f' ({now-self.gps_issue_since:.2f}/'
+                                     f'{self.options.gps_grace_s:.2f} s; sürerse iptal)')
+        else:
+            self.gps_issue_since = None
         if issue:
             self.reset_holds()
             if self.started:
