@@ -131,6 +131,10 @@ class Options:
     # SÜRERSE iptal edilir; EKF, konum tazeliği ve heartbeat kapıları anlık
     # kalır. 0 = eski davranış (ilk örnekte iptal).
     gps_grace_s: float = 1.0
+    # Yük takılmadan önce servo çıkışı bırakma konumundan bu kadar uzak olmalı.
+    # 11 Eylül saha okumasında mavi AUX1/9 çıkışı 2006 us idi, bırakma 1800:
+    # servo zaten bırakma tarafındaydı ve yük takılır takılmaz düşüyordu.
+    servo_release_margin_pwm: int = 100
     # Sıralı, sonlu yönlü geçiş kapıları: [[latA,lonA],[latB,lonB]].
     # A->B doğrultusunun negatif yanından pozitif yanına geçilir.
     entry_gates: tuple = ()
@@ -203,6 +207,8 @@ class Options:
             raise ValueError('quick_frames pozitif tam sayı olmalı')
         if type(self.quick_verify_frames) is not int or self.quick_verify_frames < 1:
             raise ValueError('quick_verify_frames pozitif tam sayı olmalı')
+        if type(self.servo_release_margin_pwm) is not int or not 0 < self.servo_release_margin_pwm <= 400:
+            raise ValueError('servo_release_margin_pwm 1-400 us aralığında tam sayı olmalı')
         if (not isinstance(self.gps_grace_s, (int, float)) or not math.isfinite(self.gps_grace_s)
                 or not 0 <= self.gps_grace_s <= 3):
             raise ValueError('gps_grace_s 0-3 s aralığında sonlu bir sayı olmalı')

@@ -128,23 +128,50 @@ class CompetitionLink(MavlinkLink):
                 return color+' nötr PWM otopilot sınırlarında değil'
         return None
 
+    def load_unsafe(self, color, output):
+        """Bu çıkışla yük takmak güvensiz mi; değilse None.
+
+        Her iki servo da RC passthrough (RCIN8/RCIN11) işlevinde: çıkış vericinin
+        kanal konumunu izler. 11 Eylül saha okumasında mavi AUX1/9 çıkışı
+        **2006 us** idi (MAX 1900, bırakma 1800), yani kanal zaten bırakma
+        tarafındaydı. Eski kapı yalnız `neutral_pwm` tanımlı servoya bakıyordu,
+        mavi'nin tanımı yok, bu yüzden hiç denetlenmedi. Artık her yük servosu
+        denetlenir.
+        """
+        s = self.options.servos[color]
+        if output is None:
+            return color+' servo çıkışı okunuyor; yükü takmayın'
+        prefix = f'SERVO{s.channel}_'
+        lower, upper = self.servo_params.get(prefix+'MIN'), self.servo_params.get(prefix+'MAX')
+        if lower is None or upper is None:
+            return color+' servo çıkış sınırları okunuyor; yükü takmayın'
+        if not lower <= output <= upper:
+            return (f'{color} servo çıkışı otopilot sınırları dışında: {output} us '
+                    f'(MIN {lower:.0f}, MAX {upper:.0f}); RC kanalı servoyu sürüyor, yükü takmayın')
+        if s.release_pwm is not None and abs(output-s.release_pwm) < self.options.servo_release_margin_pwm:
+            return (f'{color} servo bırakma konumunda: {output} us, bırakma {s.release_pwm} us; '
+                    'yükü takmayın')
+        if s.neutral_pwm is not None and abs(output-s.neutral_pwm) > 25:
+            return f'{color} servo nötr değil: {output} us; yükü takmayın'
+        return None
+
     def startup_servo_problem(self, now=None):
-        """Yük takılmadan/ARM'dan önce süreli servonun nötr çıkışını doğrula."""
+        """Yük takılmadan/ARM'dan önce her yük servosunun çıkışını doğrula."""
         if self.options.actuator != 'servo':
             return None
         now = time.monotonic() if now is None else now
         for color in self.options.payloads:
             s = self.options.servos[color]
-            if s.neutral_pwm is None:
+            if s.channel is None:
                 continue
-            output = self.servo_outputs.get(s.channel)
-            if output is None or self.servo_output_at is None or now-self.servo_output_at > .5:
+            if self.servo_output_at is None or now-self.servo_output_at > .5:
                 return color+' servo çıkışı okunuyor; yükü takmayın'
-            if abs(output-s.neutral_pwm) > 25:
-                return f'{color} servo nötr değil: {output} us; yükü takmayın'
+            unsafe = self.load_unsafe(color, self.servo_outputs.get(s.channel))
+            if unsafe:
+                return unsafe
             since = self.servo_neutral_since.get(color)
             if since is None or now-since < 2.0:
-                return color+' servo nötr kararlılığı bekleniyor; yükü takmayın'
+                return color+' servo çıkış kararlılığı bekleniyor; yükü takmayın'
         return None
 
     def _safe(self, now, mode):
@@ -205,7 +232,7 @@ class CompetitionLink(MavlinkLink):
                     continue
                 output = getattr(msg, f'servo{s.channel}_raw', None)
                 self.servo_outputs[s.channel] = output
-                if s.neutral_pwm is not None and output is not None and abs(output-s.neutral_pwm) <= 25:
+                if self.load_unsafe(color, output) is None:
                     self.servo_neutral_since.setdefault(color, now)
                 else:
                     self.servo_neutral_since.pop(color, None)

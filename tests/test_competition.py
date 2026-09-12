@@ -101,19 +101,76 @@ def test_disarmed_link_reloads_live_mission_instead_of_trusting_cached_copy(cfg,
     conn.mav.mission_request_list_send.assert_not_called()
 
 
-def test_red_servo_must_hold_neutral_for_two_seconds_before_flight(cfg,options,plan,tmp_path):
-    servos={'mavi':Servo(9,1800,True,function=58),
-            'kirmizi':Servo(11,800,True,.3,1500,function=61)}
-    link,_,_=link_ready(cfg,replace(options,actuator='servo',servos=servos),plan,tmp_path)
-    neutral=source(mav.MAVLink_servo_output_raw_message(0,0,*([1000]*8),servo11_raw=1495))
-    link.ingest(neutral,100)
-    link.ingest(neutral,101.9)
+SERVOS_FIELD={'mavi':Servo(9,1800,True,function=58),
+              'kirmizi':Servo(11,800,True,.3,1500,function=61)}
+# 11 Eylül saha okumasi: SERVO9 MIN1100 MAX1900, SERVO11 MIN800 MAX1900.
+LIMITS_FIELD={'SERVO9_MIN':1100.,'SERVO9_MAX':1900.,'SERVO11_MIN':800.,'SERVO11_MAX':1900.}
+
+
+def servo_link(cfg,options,plan,tmp_path,**over):
+    link,_,_=link_ready(cfg,replace(options,actuator='servo',servos=SERVOS_FIELD,**over),plan,tmp_path)
+    link.servo_params.update(LIMITS_FIELD)
+    return link
+
+
+def outputs(blue,red):
+    return source(mav.MAVLink_servo_output_raw_message(0,0,*([1000]*8),
+                                                       servo9_raw=blue,servo11_raw=red))
+
+
+def test_both_servos_must_hold_safe_output_for_two_seconds_before_flight(cfg,options,plan,tmp_path):
+    link=servo_link(cfg,options,plan,tmp_path)
+    safe=outputs(1100,1495)
+    link.ingest(safe,100)
+    link.ingest(safe,101.9)
     assert 'kararlılığı bekleniyor' in link.startup_servo_problem(101.9)
-    link.ingest(neutral,102.05)
+    link.ingest(safe,102.05)
     assert link.startup_servo_problem(102.05) is None
-    release=source(mav.MAVLink_servo_output_raw_message(0,0,*([1000]*8),servo11_raw=800))
-    link.ingest(release,102.1)
-    assert link.startup_servo_problem(102.1) == 'kirmizi servo nötr değil: 800 us; yükü takmayın'
+    # 800 us kirmizinin birakma konumu: daha kesin olan mesaj verilir.
+    link.ingest(outputs(1100,800),102.1)
+    assert link.startup_servo_problem(102.1) == (
+        'kirmizi servo bırakma konumunda: 800 us, bırakma 800 us; yükü takmayın')
+    # Birakma disinda ama notr de degil: notr mesaji korunur.
+    link.ingest(outputs(1100,1200),102.2)
+    assert link.startup_servo_problem(102.2) == 'kirmizi servo nötr değil: 1200 us; yükü takmayın'
+
+
+def test_blue_servo_beyond_autopilot_limits_blocks_loading(cfg,options,plan,tmp_path):
+    """11 Eylül sahasinda okunan gercek deger: AUX1/9 = 2006 us, MAX 1900.
+
+    RC passthrough (RCIN8) kanali servoyu birakma tarafinda suruyordu. Eski
+    kapi mavi'yi hic denetlemiyordu cunku neutral_pwm tanimi yok.
+    """
+    link=servo_link(cfg,options,plan,tmp_path)
+    link.ingest(outputs(2006,1495),100)
+    problem=link.startup_servo_problem(100)
+    assert problem is not None and problem.startswith('mavi servo çıkışı otopilot sınırları dışında')
+    assert '2006' in problem and 'yükü takmayın' in problem
+
+
+def test_blue_servo_at_release_position_blocks_loading(cfg,options,plan,tmp_path):
+    """Sinirlarin icinde ama birakma konumunda: yine yuk takilmamali."""
+    link=servo_link(cfg,options,plan,tmp_path)
+    link.ingest(outputs(1800,1495),100)
+    assert link.startup_servo_problem(100) == (
+        'mavi servo bırakma konumunda: 1800 us, bırakma 1800 us; yükü takmayın')
+    link.ingest(outputs(1750,1495),100)   # marj 100 us icinde
+    assert 'bırakma konumunda' in link.startup_servo_problem(100)
+
+
+def test_blue_servo_safe_hold_passes(cfg,options,plan,tmp_path):
+    link=servo_link(cfg,options,plan,tmp_path)
+    safe=outputs(1100,1495)
+    link.ingest(safe,100)
+    link.ingest(safe,102.1)
+    assert link.startup_servo_problem(102.1) is None
+
+
+def test_missing_servo_limits_block_loading(cfg,options,plan,tmp_path):
+    """MIN/MAX okunmadan yuk takma izni verilmez."""
+    link,_,_=link_ready(cfg,replace(options,actuator='servo',servos=SERVOS_FIELD),plan,tmp_path)
+    link.ingest(outputs(1100,1495),100)
+    assert link.startup_servo_problem(100) == 'mavi servo çıkış sınırları okunuyor; yükü takmayın'
 
 
 def test_flight_preflight_rejects_changed_land_before_camera_or_arm(cfg,options,plan,tmp_path):
