@@ -8,6 +8,8 @@
 #   safak servo      yalniz servo incelemesi (salt okunur)
 #   safak durum      yalniz ayarlari goster, FC'ye dokunma
 #   safak guncelle   son kodu GitHub'dan cek ve testleri calistir
+#   safak log        calisan gorevin ciktisini izle (yeniden baglaninca)
+#   safak dur        calisan gorevi duzgun kapat
 set -uo pipefail
 
 HAILO_ENV=${HAILO_ENV:-/home/furkan/Documents/proje/hailo-rpi5-examples/setup_env.sh}
@@ -105,8 +107,24 @@ case "$adim" in
     python scripts/servo_teshis.py
     exit $? ;;
 
+  log)
+    son=$(ls -t runtime/safak-*.log 2>/dev/null | head -1)
+    [ -n "$son" ] || dur "Kayit bulunamadi. Gorev calisiyor mu?  pgrep -af competition.main"
+    echo "izleniyor: $son   (Ctrl+C izlemeyi birakir, GOREVI DURDURMAZ)"
+    tail -n 40 -f "$son"
+    exit 0 ;;
+
+  dur)
+    pgrep -af 'competition\.main' >/dev/null || { echo "Calisan gorev yok."; exit 0; }
+    pkill -TERM -f 'competition\.main'
+    for _ in $(seq 1 20); do
+      pgrep -f 'competition\.main' >/dev/null || { echo "Gorev duzgun kapandi."; exit 0; }
+      sleep 0.5
+    done
+    dur "Gorev 10 s icinde kapanmadi. Elle:  pkill -TERM -f competition.main" ;;
+
   ucus) ;;
-  *) dur "Bilinmeyen adim: $adim   (ucus | rapor | servo | durum | guncelle)" ;;
+  *) dur "Bilinmeyen adim: $adim   (ucus | rapor | servo | durum | guncelle | log | dur)" ;;
 esac
 
 # =========================== TAM AKIS ======================================
@@ -155,4 +173,20 @@ echo " Panel: http://172.20.10.6:8081   (uydu >= 12, HDOP <= 1.0 bekle)"
 echo " Inis sonrasi:  safak rapor"
 echo "====================================================================="
 echo
-exec python -m safak_gorev2.competition.main --config "$PROFIL" --mode flight
+
+# SSH uzak mesafede kopabilir. Terminale bagli bir surec SIGHUP alip OLUR ve
+# main.py yalniz SIGINT/SIGTERM yakalar -- yani gorev ucus ortasinda biterdi.
+# Bu yuzden gorev setsid ile terminalden AYRI baslatilir, ciktisi dosyaya
+# yazilir ve burada izlenir. Baglanti koparsa yalniz izleme durur.
+mkdir -p runtime
+LOG=runtime/safak-$(date +%Y%m%dT%H%M%S).log
+setsid nohup python -m safak_gorev2.competition.main --config "$PROFIL" \
+       --mode flight > "$LOG" 2>&1 < /dev/null &
+PID=$!
+sleep 2
+kill -0 "$PID" 2>/dev/null || { echo; cat "$LOG"; dur "Gorev baslar baslamaz durdu (yukarida)."; }
+echo "Gorev PID $PID   kayit: $LOG"
+echo "SSH koparsa gorev CALISMAYA DEVAM EDER. Yeniden baglaninca:  safak log"
+echo "Duzgun kapatmak icin:  safak dur      (Ctrl+C yalniz izlemeyi birakir)"
+echo
+tail -n +1 -f "$LOG"
