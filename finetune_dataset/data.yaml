@@ -1,7 +1,0 @@
-path: .
-train: images/train
-val: images/val
-
-names:
-  0: kirmizi_hedef
-  1: mavi_hedef

@@ -1,6 +1,6 @@
 """Uçuş kaydından tek sayfalık rapor: durum akışı, hız/fren, bırakma anı ve takip kanıtı.
 
-Yalnız `competition-*.jsonl` dosyasını okur. Kamera, MAVLink, Hailo veya servo
+Yalnız `competition-*.jsonl` dosyasını okur. Kamera, MAVLink, OpenCV veya servo
 açmaz; hiçbir dosyayı değiştirmez. Uçuştan sonra çalıştırılır.
 
     python scripts/ucus_raporu.py                # en yeni kaydı bulur

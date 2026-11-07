@@ -20,7 +20,7 @@ def awaiting_second(cfg, options, plan):
     return c
 
 
-@pytest.mark.parametrize('strategy', ['center', 'quick'])
+@pytest.mark.parametrize('strategy', ['center'])
 @pytest.mark.parametrize('status', ['ACK_ACCEPTED', 'SIMULATED'])
 def test_second_ack_flies_straight_to_land_waypoint(cfg, options, plan, strategy, status):
     # Kullanıcı isteği: ikinci yükten sonra kalan tarama waypointleri atlanır ve

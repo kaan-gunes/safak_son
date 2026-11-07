@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from safak_gorev2.competition.config import Options
 from safak_gorev2.camera_contract import capture_missing, metric_missing, camera_manifest
-from safak_gorev2.hailo_backend import create_picamera
+from safak_gorev2.camera_source import create_picamera
 from safak_gorev2.record import profile_manifest, verify_recording_source
 from safak_gorev2.competition.route import mission_digest, mission_digest_problem
 from safak_gorev2.competition.vision import DualVision
@@ -155,7 +155,6 @@ def test_actual_profile_digest_detects_model_and_control_changes():
     cfg,o=Options.load('config/ana-imx708.json')
     digest=profile_digest(cfg,o)
     assert profile_digest(replace(cfg,control=replace(cfg.control,acquire_s=.7)),o)!=digest
-    assert profile_digest(replace(cfg,hef_sha256='0'*64),o)!=digest
 
 
 def test_arducam_link_refuses_payload_even_in_simulation(cfg,mission,tmp_path,monkeypatch):

@@ -58,7 +58,7 @@ class ColorDetector:
         return result
 
     def detect(self, image, border_px=None):
-        # Hızlı görevde metrik ölçüm yok; kenara değen hedef bölgesi elenmez.
+        # Kenara değen hedef bölgesi aday tespitinde elenmez.
         border = self.camera.min_border_px if border_px is None else max(0, int(border_px))
         h, w = image.shape[:2]
         width = min(w, self.options.width)

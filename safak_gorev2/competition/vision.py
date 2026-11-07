@@ -59,8 +59,8 @@ class DualVision:
                          for c in COLORS} if calibration else {}
 
     def detect(self, frame, pose=None, strategy='center'):
-        if strategy not in ('center', 'quick'):
-            raise ValueError('Yalnız ana (center) ve hızlı (quick) görev destekleniyor')
+        if strategy not in ('center',):
+            raise ValueError('Yalnız ana (center) görev destekleniyor')
         candidates, diagnostics = [], []
         started = time.monotonic()
         # Kenara değen hedef aday olur; metrik ölçümün kendi kenar payı

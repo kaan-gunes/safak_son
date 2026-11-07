@@ -118,7 +118,7 @@ class Runtime:
                     self.state.pipeline_error = f"Temsili olay kaydı: {e}"
                     self.release_job = None
             if self.mode == "observe":
-                decision = Decision("OBSERVING", "Hailo tespiti ve Pixhawk verileri izleniyor; uçuş komutu gönderilmez")
+                decision = Decision("OBSERVING", "OpenCV tespiti ve Pixhawk verileri izleniyor; uçuş komutu gönderilmez")
             else:
                 problem = self.state.pipeline_error or self.telemetry.preflight_problem()
                 decision = self.controller.step(tick, t, targets, frame_id, frame_at,

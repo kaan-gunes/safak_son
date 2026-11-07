@@ -266,9 +266,6 @@ class DualController:
                     # waypointlerine gidilmez, doğrudan LAND waypointine uçulur.
                     self.transition('SELECT_LAND', now, 'Takılı yük komutları kabul edildi; LAND waypointi seçiliyor')
                     return self.decision(Action('stop'), Action('mission_current', (mission.land_seq,)))
-                if self.options.strategy == 'quick':
-                    self.transition('RESUME_SELECT', now, 'Yük komutu kabul edildi; irtifa değiştirmeden rotaya dönülüyor')
-                    return self.decision(Action('stop'), Action('resume', (self.resume_seq, mission_digest(mission))))
                 self.climb_hold.reset()
                 self.transition('CLIMB', now, 'Yük komutu kabul edildi; tarama irtifasına dönülüyor')
                 return self.decision(Action('stop'))
@@ -319,7 +316,7 @@ class DualController:
                 # anık düzlem çözümü bozulursa aynı OpenCV kutusuyla bu sabit
                 # konumu tazele. Böylece sahte/yeni hedef PnP'siz devralınmaz.
                 matches = [x for x in visual
-                           if bbox_iou(x.bbox, self.selected_box) >= self.options.quick_iou]
+                           if bbox_iou(x.bbox, self.selected_box) >= self.options.candidate_iou]
                 if matches:
                     tracked = max(matches, key=lambda x:bbox_iou(x.bbox, self.selected_box))
                     self.selected_box = tracked.bbox
@@ -389,7 +386,7 @@ class DualController:
         for color in COLORS:
             choices = [x for x in eligible if x.color == color]
             associated = [x for x in choices if color in self.boxes
-                          and bbox_iou(x.bbox,self.boxes[color]) >= self.options.quick_iou]
+                          and bbox_iou(x.bbox,self.boxes[color]) >= self.options.candidate_iou]
             choice = max(associated or choices, key=lambda x:x.rank) if choices else None
             h = self.holds[color]
             if choice is None:
@@ -404,11 +401,11 @@ class DualController:
                 h.reset()
                 self.boxes.pop(color, None)
                 continue
-            if color in self.boxes and bbox_iou(choice.bbox, self.boxes[color]) < self.options.quick_iou:
+            if color in self.boxes and bbox_iou(choice.bbox, self.boxes[color]) < self.options.candidate_iou:
                 h.reset()
             self.boxes[color] = choice.bbox
             h.update(frame_id, frame_at, True)
-            if h.count >= self.options.quick_frames and h.elapsed+1e-9 >= self.options.quick_hold_s:
+            if h.count >= self.options.candidate_frames and h.elapsed+1e-9 >= self.options.candidate_hold_s:
                 ready.append(choice)
         if ready:
             if self.past(now, self.options.intercept_deadline_s):
@@ -417,7 +414,7 @@ class DualController:
                 return self.decision(reason='Süre sonuna yakın; yeni hedefe durulmuyor')
             choice = max(ready, key=lambda x:x.rank)
             return self.begin_stop(now, t, choice)
-        return self.decision(reason='Mavi/kırmızı aday aranıyor; ilk doğrulama '+str(self.options.quick_hold_s)+' s')
+        return self.decision(reason='Mavi/kırmızı aday aranıyor; ilk doğrulama '+str(self.options.candidate_hold_s)+' s')
 
     def elapsed(self, now):
         """Kalkıştan (AUTO devralma) beri geçen saniye; devralınmadıysa None."""
@@ -481,8 +478,7 @@ class DualController:
                 return self.abort(now, t, 'GUIDED duruş geçişi doğrulanamadı')
             if t.mode != 'GUIDED' or t.heartbeat_at <= self.entered:
                 return self.decision(Action('stop'))
-            self.transition('STOPPING', now, 'Frenleniyor; '+('merkezleme ve alçalma kapalı' if self.options.strategy == 'quick'
-                            else 'merkezleme öncesi duruş bekleniyor'))
+            self.transition('STOPPING', now, 'Frenleniyor; '+'merkezleme öncesi duruş bekleniyor')
             return self.decision(Action('stop'))
 
         fresh = frame_id is not None and 0 <= now-frame_at <= self.cfg.control.frame_timeout_s
@@ -492,7 +488,7 @@ class DualController:
                       if x.color == self.selected]
             if self.state == 'VERIFYING':
                 usable = [x for x in usable if x.corroborated]
-            matches = [x for x in usable if bbox_iou(x.bbox, self.selected_box) >= self.options.quick_iou]
+            matches = [x for x in usable if bbox_iou(x.bbox, self.selected_box) >= self.options.candidate_iou]
             choice = max(matches, key=lambda x:bbox_iou(x.bbox, self.selected_box)) if matches else None
             if choice is None and self.state == 'STOPPING' and len(usable) == 1:
                 # Fren sırasında hedef kadrajda hızla kaydığı için kutu örtüşmesi
@@ -511,8 +507,7 @@ class DualController:
             held = self.stop_hold.update(t.position_at, t.position_at, stopped)
             if held+1e-9 >= self.options.stop_hold_s:
                 self.verify_frame = frame_id
-                self.transition('VERIFYING', now, 'Araç yavaşladı; '+('taze OpenCV renk/dörtgen doğrulaması' if self.options.strategy == 'quick'
-                                else 'hedef OpenCV renk, köşe ve metrik geometriyle doğrulanıyor'))
+                self.transition('VERIFYING', now, 'Araç yavaşladı; '+'hedef OpenCV renk, köşe ve metrik geometriyle doğrulanıyor')
             return self.decision(Action('stop'))
 
         if not fresh:
@@ -523,9 +518,6 @@ class DualController:
             self.transition('RESUME_SELECT', now, 'Hedef doğrulanamadı; yük korunarak kesilen waypoint seçiliyor')
             return self.decision(Action('stop'), Action('resume', (self.resume_seq, mission_digest(mission))))
         if not stopped:
-            if self.options.strategy == 'quick':
-                self.verify_hold.reset()
-                return self.decision(Action('stop'), reason='Araç hâlâ hareketli; hedef doğrulaması sıfırlandı')
             # Ana görevde GUIDED sürüklenmesi 0,2 m/s eşiğini kısa süre aşınca
             # tüm ölçüm siliniyordu. Bu kare sayılmaz; süreklilik ContinuousHold
             # boşluk sınırıyla (max_lock_frame_gap_s) korunur.
@@ -533,15 +525,6 @@ class DualController:
         if (frame_at <= self.entered or (self.verify_frame is not None and frame_id <= self.verify_frame)):
             return self.decision(Action('stop'))
         self.verify_frame = frame_id
-        if self.options.strategy == 'quick':
-            if choice is None:
-                self.verify_hold.reset()
-                return self.decision(Action('stop'), reason='Aynı hedefte taze OpenCV dörtgeni bekleniyor')
-            held = self.verify_hold.update(frame_id, frame_at, True)
-            if (held+1e-9 >= self.options.quick_verify_s
-                    and self.verify_hold.count >= self.options.quick_verify_frames):
-                return self.request_release(now, frame_id, frame_at, 'GUIDED')
-            return self.decision(Action('stop'), reason=f'Kısa doğrulama: {held:.2f}/{self.options.quick_verify_s:.2f} s')
         if choice is None:
             self.verify_hold.reset()
             return self.decision(Action('stop'), reason='Aynı hedefte taze OpenCV dörtgeni bekleniyor')

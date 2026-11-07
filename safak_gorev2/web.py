@@ -74,7 +74,7 @@ def create_app(cfg: Config, state: SharedState, telemetry: TelemetryStore) -> Fl
     def health():
         now = time.monotonic()
         with state.lock:
-            frame_ready = (state.backend == "HAILO" and state.frame_id is not None
+            frame_ready = (state.backend == "OPENCV" and state.frame_id is not None
                            and 0 <= now - state.frame_at <= cfg.control.frame_timeout_s)
         ready = (state.mode == "flight" and frame_ready
                  and not (cfg.flight_missing() or telemetry.preflight_problem()

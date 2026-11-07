@@ -115,7 +115,7 @@ def test_panel_health_never_calls_missing_or_stale_vision_ready(cfg, monkeypatch
     state.decision = Decision("SEARCHING", "Test")
     client = create_app(cfg, state, store).test_client()
     assert client.get("/healthz").json["flight_ready"] is False
-    state.backend, state.frame_id, state.frame_at = "HAILO", 1, time.monotonic()
+    state.backend, state.frame_id, state.frame_at = "OPENCV", 1, time.monotonic()
     assert client.get("/healthz").json["flight_ready"] is True
     state.frame_at -= 1
     assert client.get("/healthz").json["flight_ready"] is False
@@ -143,7 +143,7 @@ def test_calibration_png_preserves_source_size_and_rejects_stale_or_flight(cfg):
     assert np.array_equal(decoded,source)
     assert json.loads(response.headers["X-Camera-Meta"])["width"] == 1280
     assert response.headers["X-Frame-Id"] == "7"
-    assert response.headers["X-Frame-Backend"] == "HAILO"
+    assert response.headers["X-Frame-Backend"] == "OPENCV"
     assert float(response.headers["X-Stream-Id"]) == state.started
     recorded = json.loads(response.headers["X-Detections"])
     assert recorded == [{"label":"mavi_hedef","confidence":.51,

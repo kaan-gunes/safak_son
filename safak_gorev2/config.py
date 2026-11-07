@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 import json
 import math
 from pathlib import Path
@@ -112,9 +111,6 @@ class Config:
     link: LinkConfig = dataclasses.field(default_factory=LinkConfig)
     mission: MissionConfig = dataclasses.field(default_factory=MissionConfig)
     web: WebConfig = dataclasses.field(default_factory=WebConfig)
-    hef_file: str = "safak_v2_hailo_model/safak_v2.hef"
-    hef_sha256: str = "b43dfac55acae45ce5db26301b6b7e9d63dc9be64e77a2f5069566068db45291"
-    labels_file: str = "config/hailo_labels.json"
     runtime_dir: str = "runtime"
 
     @classmethod
@@ -134,7 +130,7 @@ class Config:
         root = path.parent.parent
         resolve = lambda p: str((root / p).resolve()) if p else None
         config = dataclasses.replace(
-            config, hef_file=resolve(config.hef_file), labels_file=resolve(config.labels_file),
+            config,
             runtime_dir=resolve(config.runtime_dir), camera=dataclasses.replace(
                 config.camera, calibration_file=resolve(config.camera.calibration_file)))
         config.validate()
@@ -203,10 +199,3 @@ class Config:
         if self.mission.direct_land_corridor_checked is not True:
             missing.append("son LAND'e geçiş koridorunun açık olduğu bilgisi")
         return missing
-
-    def verify_model(self) -> None:
-        if hashlib.sha256(Path(self.hef_file).read_bytes()).hexdigest() != self.hef_sha256:
-            raise ValueError("HEF dosyası yüklenen modelin SHA256 değeriyle uyuşmuyor")
-        labels = json.loads(Path(self.labels_file).read_text())
-        if labels.get("labels") != ["unlabeled", "kirmizi_hedef", "mavi_hedef"]:
-            raise ValueError("TAPPAS etiket eşlemesi bu iki sınıflı modele uymuyor")

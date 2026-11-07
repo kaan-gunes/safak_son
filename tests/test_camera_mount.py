@@ -42,15 +42,11 @@ def test_mounted_camera_recovers_ground_position(cfg, mount, color, angles):
     target = candidates[0].metric
     assert (target.north,target.east,target.ground_down)==pytest.approx(ground,abs=.09)
     assert target.camera_height_m == pytest.approx(-(vehicle+r@np.array(cfg.camera.offset_body_m))[2],abs=.09)
-    # Hızlı görevde montajdan bağımsız OpenCV kutusu var; metrik hedef yok.
-    quick, _ = vision.detect(frame,pose,'quick')
-    assert quick[0].bbox == pytest.approx(box,abs=2/720)
-    assert quick[0].source == 'opencv' and quick[0].metric is None
 
 
-@pytest.mark.parametrize('task', ['ana', 'hizli'])
+@pytest.mark.parametrize('task', ['ana'])
 def test_active_profiles_use_reported_mount(task):
-    cfg, options = Options.load(f'config/{task}-gorev.json')
+    cfg, options = Options.load('config/ana-imx708.json')
     assert tuple(cfg.camera.offset_body_m)==(.11,0.,.05)
     assert options.camera_mount_yaw_deg==180
 

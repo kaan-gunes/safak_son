@@ -12,19 +12,13 @@
 #   bash scripts/saha.sh test      Pi'de testleri çalıştır
 set -euo pipefail
 
-HAILO_ENV="${HAILO_ENV:-/home/furkan/Documents/proje/hailo-rpi5-examples/setup_env.sh}"
-PROJE="${PROJE:-/home/furkan/Desktop/safak-gorev2-quad}"
+PROJE="${PROJE:-$(cd "$(dirname "$0")/.." && pwd)}"
 PROFIL="${PROFIL:-config/ana-imx708.json}"
-
 adim=${1:-}
 [ -n "$adim" ] || { sed -n '2,12p' "$0" | sed 's/^# \?//'; exit 2; }
-
-# --- ortam: her adımda aynı, elle kurmaya gerek yok ---------------------------
-[ -f "$HAILO_ENV" ] || { echo "HATA: Hailo ortamı yok: $HAILO_ENV"; exit 1; }
-# shellcheck disable=SC1090
-cd "$(dirname "$HAILO_ENV")" && source "$(basename "$HAILO_ENV")" >/dev/null
 cd "$PROJE"
-export PYTHONPATH="$PWD/runtime/python:$PWD:${PYTHONPATH:-}"
+[ ! -f .venv/bin/activate ] || source .venv/bin/activate
+export PYTHONPATH="$PWD:${PYTHONPATH:-}"
 export MAVLINK20=1
 echo "ortam: $(python -V 2>&1)  proje: $PWD  profil: $PROFIL"
 

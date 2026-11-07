@@ -110,12 +110,6 @@ class CompetitionLink(MavlinkLink):
     def _shutdown_outputs(self):
         self._neutralize(time.monotonic())
 
-    def quick_release_stopped(self, t):
-        return (t.horizontal_speed <= self.options.stop_speed_mps
-                and abs(t.vd) <= self.cfg.control.release_vertical_speed_mps
-                and t.tilt_deg <= self.cfg.control.release_tilt_deg
-                and t.relative_alt_m >= self.cfg.control.minimum_intercept_relative_alt_m)
-
     def snapshot_status(self):
         with self.store.lock:
             return dict(self.payload_status)
@@ -356,9 +350,8 @@ class CompetitionLink(MavlinkLink):
                     and t.mission_seq is not None
                     and self.options.search_start_seq <= t.mission_seq <= self.options.search_end_seq
                     and 0 <= now-captured_at <= self.cfg.control.frame_timeout_s
-                    and mode == 'GUIDED' and self.options.strategy in ('center', 'quick') and self.owned
-                    and t.rc_slot == self.claim_slot
-                    and (self.options.strategy != 'quick' or self.quick_release_stopped(t)))
+                    and mode == 'GUIDED' and self.options.strategy in ('center',) and self.owned
+                    and t.rc_slot == self.claim_slot)
                 if not permitted:
                     with self.store.lock:
                         self.payload_status[color] = 'BLOCKED'
@@ -373,8 +366,7 @@ class CompetitionLink(MavlinkLink):
                 # Disk yazılırken kare/telemetri eskimiş olabilir; lease tekrar kontrol edilir.
                 sent_at = time.monotonic()
                 if (sent_at-now > self.cfg.link.command_lease_s or not self._safe(sent_at, mode)
-                        or not 0 <= sent_at-captured_at <= self.cfg.control.frame_timeout_s
-                        or (self.options.strategy == 'quick' and not self.quick_release_stopped(self.store.snapshot()))):
+                        or not 0 <= sent_at-captured_at <= self.cfg.control.frame_timeout_s):
                     self._status(color, 'BLOCKED')
                     continue
                 if self.options.actuator == 'simulated':
@@ -390,7 +382,7 @@ class CompetitionLink(MavlinkLink):
             else:
                 super()._perform(now, (a,))
                 if ((a.kind == 'mode' and a.values == ('GUIDED', 'AUTO') or a.kind == 'stop') and self.owned
-                        and self.options.strategy in ('center', 'quick') and self._safe(now, 'AUTO')):
+                        and self.options.strategy in ('center',) and self._safe(now, 'AUTO')):
                     # Mod cevabı gelirken karar döngüsü dursa bile GUIDED boş hızla kalmasın.
                     # Üst sınıf göndericisi yalnız GUIDED'de uygular; süre aşımında AUTO'ya bırakır.
                     self.velocity = (0., 0., 0.)

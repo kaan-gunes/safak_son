@@ -175,16 +175,16 @@ tick();
 def main():
     parser = argparse.ArgumentParser(description='ŞAFAK — yalnız OpenCV renk/dörtgen kullanan iki hedef görevi')
     selection = parser.add_mutually_exclusive_group(required=True)
-    selection.add_argument('--task', choices=('ana','hizli'), help='Ana merkezleme veya durup bırakan hızlı görev')
-    selection.add_argument('--config', help='Bu iki görevden biri için sahada doldurulmuş profil')
+    selection.add_argument('--task', choices=('ana',), help='Ana merkezleme görevi')
+    selection.add_argument('--config', help='Ana görev profili')
     parser.add_argument('--mode', choices=('observe','flight'), default='observe')
     parser.add_argument('--check', action='store_true', help='Dosyaları denetle; kamera/USB/servo açma')
     args = parser.parse_args()
-    path = args.config or str(Path(__file__).resolve().parents[2]/'config'/f'{args.task}-gorev.json')
+    path = args.config or str(Path(__file__).resolve().parents[2]/'config'/'ana-imx708.json')
     try:
         cfg, options = Options.load(path)
     except (OSError, ValueError, TypeError, KeyError) as error:
-        parser.error('Profil açılamadı; yalnız ana/hizli görev destekleniyor: '+str(error))
+        parser.error('Profil açılamadı; yalnız ana görev destekleniyor: '+str(error))
     missing = options.missing(cfg)
     if args.check:
         import json
@@ -244,7 +244,7 @@ def main():
                   'Mission Planner rotasını artık değiştirmeyin; şimdi ARM/AUTO yapılabilir.', flush=True)
         camera_gate_thread = threading.Thread(target=open_camera_gate, name='flight-preflight', daemon=True)
         camera_gate_thread.start()
-    print(f'Görev: {"ANA" if options.strategy == "center" else "HIZLI"} / {options.actuator}; panel portu {cfg.web.port}',flush=True)
+    print(f'Görev: ANA / {options.actuator}; panel portu {cfg.web.port}',flush=True)
     failed = False
     try:
         run_opencv_camera(cfg,runtime.mailbox,runtime.state,runtime.stop)

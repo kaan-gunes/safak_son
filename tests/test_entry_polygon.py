@@ -50,7 +50,7 @@ def test_recorded_outside_takeoff_reaches_stop_for_each_color(flight_index, colo
         pytest.fail('Kayıtlı hedefte duruş isteği oluşmadı')
 
 
-@pytest.mark.parametrize('strategy', ['center', 'quick'])
+@pytest.mark.parametrize('strategy', ['center'])
 def test_no_command_outside_or_before_gate_then_stop(cfg, options, plan, strategy):
     c = DualController(cfg, replace(options, strategy=strategy))
     c.step(99, telemetry(99, armed=False, landed=1), (), None, 0, plan)

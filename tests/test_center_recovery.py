@@ -1,4 +1,4 @@
-"""Ana görev hızı ACK ile sınırlanır; hızlı görev komutları değişmez."""
+"""Ana görev hızı ACK ile sınırlanır; ana görev komutları doğrulanır."""
 from dataclasses import replace
 
 import pytest
@@ -68,9 +68,9 @@ def test_link_speed_command_is_transient_center_only_and_acknowledged(cfg, optio
     assert link.snapshot_search_speed_status() == {'status': 'ACCEPTED', 'request_at': 100}
 
 
-@pytest.mark.parametrize('bad', ['quick', 'disarmed', 'pilot', 'wrong_slot', 'wrong_speed', 'land', 'wrong_route', 'observe'])
+@pytest.mark.parametrize('bad', ['center', 'disarmed', 'pilot', 'wrong_slot', 'wrong_speed', 'land', 'wrong_route', 'observe'])
 def test_speed_command_guards(cfg, options, plan, tmp_path, bad):
-    opts = options if bad=='quick' else speed_options(options)
+    opts = options if bad=='center' else speed_options(options)
     link, conn, _ = link_ready(cfg, opts, plan, tmp_path)
     if bad=='disarmed': link.store.value = telemetry(100, armed=False)
     if bad=='pilot': link.store.value = telemetry(100, mode='LOITER')
@@ -82,14 +82,6 @@ def test_speed_command_guards(cfg, options, plan, tmp_path, bad):
     conn.mav.param_set_send.assert_not_called()
 
 
-def test_quick_does_not_emit_speed_setup(cfg, options, plan):
-    c = ready(cfg, options, plan)
-    for i in range(4):
-        now = 100+i*.05
-        d = c.step(now, telemetry(now), (candidate(i, now),), i, now, plan)
-        assert all(a.kind != 'search_speed' for a in d.actions)
-        if c.state == 'REQUEST_STOP': break
-    assert c.state == 'REQUEST_STOP'
 
 
 def test_auto_resume_reapplies_center_speed(cfg, options, plan):

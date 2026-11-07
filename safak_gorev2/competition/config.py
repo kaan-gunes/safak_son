@@ -56,7 +56,7 @@ class Tracking:
     """Zaman eksenli hedef takibi; kısa OpenCV boşluklarını köprüler.
 
     Varsayılan `enabled=False`: eski davranış hiç değişmez. Saha profilleri
-    (`config/ana-gorev.json`, `config/hizli-gorev.json`) bunu açar; sahada
+    (`config/ana-imx708.json`) bunu açar; sahada
     tek alanı `false` yapmak anında eski akışa döner.
     """
     enabled: bool = False
@@ -146,15 +146,13 @@ class Options:
     entry_gates: tuple = ()
     finish_gate: tuple = ()
     flight_polygon: tuple = ()  # İzinli uçuş alanı; GPS lat/lon köşeleri.
-    quick_frames: int = 3
-    quick_hold_s: float = 0.10
-    quick_iou: float = 0.25
+    candidate_frames: int = 3
+    candidate_hold_s: float = 0.10
+    candidate_iou: float = 0.25
     stop_speed_mps: float = 0.20
     stop_hold_s: float = 0.30
     stop_timeout_s: float = 5.0
     verify_timeout_s: float = 3.0
-    quick_verify_s: float = 0.10
-    quick_verify_frames: int = 3
     retry_delay_s: float = 5.0
     release_ack_timeout_s: float = 2.0
     payloads: tuple = COLORS  # Bu sortiede fiziksel olarak takılı yükler.
@@ -175,8 +173,6 @@ class Options:
         options.validate()
         if options.strategy == 'center' and (base.control.acquire_frames < 6 or base.control.acquire_s < .5):
             raise ValueError('Ana doğrulama en az 6 bağımsız kare ve 0.5 s olmalı')
-        if options.strategy == "quick":
-            base = replace(base, camera=replace(base.camera, calibration_file=None))
         base = replace(base, runtime_dir=str(path.parent.parent / 'runtime' / 'competition' / (options.strategy + '-' + (base.camera.variant or 'legacy'))))
         return base, options
 
@@ -195,7 +191,7 @@ class Options:
             raise ValueError('Geçici tarama hızı yalnız ana görevde 0,5–8 m/s olabilir')
         if self.camera_mount_yaw_deg is not None and (type(self.camera_mount_yaw_deg) is not int or self.camera_mount_yaw_deg not in (0, 180)):
             raise ValueError('Yere bakan kamera montajı 0 veya 180 derece olmalı')
-        if self.strategy not in ('center', 'quick') or self.actuator not in ('simulated', 'servo'):
+        if self.strategy not in ('center',) or self.actuator not in ('simulated', 'servo'):
             raise ValueError('Strateji/aktüatör seçimi geçersiz')
         for name in ('mission_deadline_s', 'intercept_deadline_s'):
             value = getattr(self, name)
@@ -209,10 +205,8 @@ class Options:
             raise ValueError('Birden çok tarama turu için mission_deadline_s zorunlu')
         if type(self.search_laps) is not int or not 1 <= self.search_laps <= 10:
             raise ValueError('search_laps 1-10 arası tam sayı olmalı')
-        if type(self.quick_frames) is not int or self.quick_frames < 1:
-            raise ValueError('quick_frames pozitif tam sayı olmalı')
-        if type(self.quick_verify_frames) is not int or self.quick_verify_frames < 1:
-            raise ValueError('quick_verify_frames pozitif tam sayı olmalı')
+        if type(self.candidate_frames) is not int or self.candidate_frames < 1:
+            raise ValueError('candidate_frames pozitif tam sayı olmalı')
         if type(self.servo_release_margin_pwm) is not int or not 0 < self.servo_release_margin_pwm <= 400:
             raise ValueError('servo_release_margin_pwm 1-400 us aralığında tam sayı olmalı')
         for color, s in self.servos.items():
@@ -231,19 +225,17 @@ class Options:
                 or not 0 <= self.gps_grace_s <= 3):
             raise ValueError('gps_grace_s 0-3 s aralığında sonlu bir sayı olmalı')
         for name in ('search_speed_margin_mps', 'search_speed_retry_s',
-                     'quick_hold_s', 'release_ack_timeout_s', 'quick_iou', 'stop_speed_mps',
-                     'stop_hold_s', 'stop_timeout_s', 'verify_timeout_s', 'retry_delay_s', 'quick_verify_s'):
+                     'candidate_hold_s', 'release_ack_timeout_s', 'candidate_iou', 'stop_speed_mps',
+                     'stop_hold_s', 'stop_timeout_s', 'verify_timeout_s', 'retry_delay_s'):
             value = getattr(self, name)
             if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
                 raise ValueError(f'{name} pozitif ve sonlu olmalı')
-        if self.quick_iou > 1 or set(self.servos) != set(COLORS):
+        if self.candidate_iou > 1 or set(self.servos) != set(COLORS):
             raise ValueError('İki yük için ayrı servo tanımı gerekli')
         if not self.payloads or len(self.payloads) != len(set(self.payloads)) or not set(self.payloads) <= set(COLORS):
             raise ValueError('Takılı yükler mavi/kırmızı listesinin boş olmayan alt kümesi olmalı')
         if self.stop_timeout_s <= self.stop_hold_s:
             raise ValueError('Durma zaman aşımı kararlılık süresinden uzun olmalı')
-        if self.verify_timeout_s <= self.quick_verify_s:
-            raise ValueError('Doğrulama zaman aşımı kısa doğrulama süresinden uzun olmalı')
         if self.vehicle_type not in (None, 2, 13):
             raise ValueError('Yalnız quad veya hexacopter desteklenir')
         for seq in (self.search_start_seq, self.search_end_seq):

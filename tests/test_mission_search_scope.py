@@ -16,7 +16,7 @@ def full_route(options, plan):
                    search_end_seq=plan.land_seq-1)
 
 
-@pytest.mark.parametrize('strategy', ['center', 'quick'])
+@pytest.mark.parametrize('strategy', ['center'])
 @pytest.mark.parametrize('color', ['mavi', 'kirmizi'])
 @pytest.mark.parametrize('seq', [2, 3])
 def test_every_waypoint_can_stop_without_old_field(cfg, options, plan, strategy, color, seq):
@@ -64,7 +64,7 @@ def test_field_remains_default_and_scope_is_explicit(options):
     with pytest.raises(ValueError): replace(options, search_scope='typo').validate()
 
 
-@pytest.mark.parametrize('path', ['config/ana-imx708.json', 'config/ana-gorev.json', 'config/hizli-gorev.json'])
+@pytest.mark.parametrize('path', ['config/ana-imx708.json', 'config/ana-imx708.json', 'config/ana-imx708.json'])
 def test_deployed_profiles_use_new_full_route(path):
     # Tarama sıraları ve parmak izi SAHA verisidir; rota her değiştiğinde
     # `scripts/route_digest.py --write` bunları yeniden türetir. Bu yüzden test
@@ -85,7 +85,7 @@ def test_aux1_only_profile_matches_confirmed_fifteen_meter_route_contract():
     assert opts.payloads == ('mavi',)
 
 
-@pytest.mark.parametrize('strategy', ['center', 'quick'])
+@pytest.mark.parametrize('strategy', ['center'])
 def test_selected_start_waits_until_waypoint_two_is_passed(cfg, options, plan, strategy):
     opts = replace(full_route(options, plan), strategy=strategy, search_start_seq=3)
     c = DualController(cfg, opts)

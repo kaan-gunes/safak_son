@@ -25,9 +25,9 @@
     "max_gap_s": 0.25,
     "bridge_search": true
   },
-  "quick_frames": 3,
-  "quick_hold_s": 0.1,
-  "quick_iou": 0.25,
+  "candidate_frames": 3,
+  "candidate_hold_s": 0.1,
+  "candidate_iou": 0.25,
   "stop_speed_mps": 0.2,
   "stop_hold_s": 0.3,
   "stop_timeout_s": 5.0,

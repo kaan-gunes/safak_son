@@ -171,21 +171,21 @@ def test_make_box_rejects_degenerate_prediction():
 def test_pixels_keep_the_label_through_a_blank_frame(cfg):
     vision = DualVision(cfg, tracking=tracking())
     for i in range(2):
-        xs,_ = vision.detect(scene(frame_id=i, at=100+i*.02), strategy='quick')
+        xs,_ = vision.detect(scene(frame_id=i, at=100+i*.02), strategy='center')
         assert len(xs) == 1 and xs[0].source == 'opencv' and xs[0].corroborated
-    xs,_ = vision.detect(scene(blank=True, frame_id=2, at=100.04), strategy='quick')
+    xs,_ = vision.detect(scene(blank=True, frame_id=2, at=100.04), strategy='center')
     assert len(xs) == 1 and xs[0].bridged and xs[0].track_state == TRACKED
     assert xs[0].missed == 1 and xs[0].filtered_bbox is not None
-    xs,_ = vision.detect(scene(frame_id=3, at=100.06), strategy='quick')
+    xs,_ = vision.detect(scene(frame_id=3, at=100.06), strategy='center')
     assert len(xs) == 1 and xs[0].corroborated and not xs[0].bridged
 
 
 def test_disabled_tracking_returns_the_original_candidates(cfg):
     vision = DualVision(cfg)
-    xs,_ = vision.detect(scene(), strategy='quick')
+    xs,_ = vision.detect(scene(), strategy='center')
     assert len(xs) == 1 and xs[0].score is None and xs[0].track_state is None
     assert vision.tracker is None
-    xs,_ = vision.detect(scene(blank=True, frame_id=2, at=100.02), strategy='quick')
+    xs,_ = vision.detect(scene(blank=True, frame_id=2, at=100.02), strategy='center')
     assert not xs
 
 
@@ -194,8 +194,8 @@ def test_real_detection_box_is_never_replaced_by_the_filter(cfg):
     plain = DualVision(cfg)
     for i in range(6):
         frame = scene(frame_id=i, at=100+i*.02, box=(.3+i*.01,.2,.7+i*.01,.8))
-        tracked,_ = vision.detect(frame, strategy='quick')
-        raw,_ = plain.detect(frame, strategy='quick')
+        tracked,_ = vision.detect(frame, strategy='center')
+        raw,_ = plain.detect(frame, strategy='center')
         real = [x for x in tracked if not x.bridged]
         assert [x.bbox for x in real] == [x.bbox for x in raw]
         assert [x.color_fill for x in real] == [x.color_fill for x in raw]
@@ -230,7 +230,7 @@ def test_bridged_candidate_outside_the_window_is_rejected(cfg, options, missed):
 def test_one_dropped_frame_no_longer_restarts_the_search_counter(cfg, options, plan):
     """Aynı kare dizisi: köprüleme açıkken hedef alınır, kapalıyken alınamaz."""
     def run(enabled):
-        o = replace(options, tracking=tracking(enabled=enabled), quick_frames=3, quick_hold_s=.10)
+        o = replace(options, tracking=tracking(enabled=enabled), candidate_frames=3, candidate_hold_s=.10)
         c = ready(cfg, o, plan)
         for i in range(6):
             now = 100+i*.05
@@ -276,8 +276,8 @@ def test_invalid_tracking_settings_rejected(values):
 
 
 def test_field_profiles_enable_tracking_within_the_lock_gap():
-    for task in ('ana', 'hizli'):
-        cfg, o = Options.load(f'config/{task}-gorev.json')
+    for task in ('ana',):
+        cfg, o = Options.load('config/ana-imx708.json')
         assert o.tracking.enabled is True and o.tracking.debug is False
         assert o.tracking.max_tracking_frames < o.tracking.max_missed_frames
         # Köprü penceresi kilit boşluğu sınırının içinde kalmalı.

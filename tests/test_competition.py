@@ -33,7 +33,7 @@ def plan(mission):
 
 @pytest.fixture
 def options(plan):
-    return Options(strategy='quick', vehicle_type=13, sortie_id='test-flight',
+    return Options(strategy='center', vehicle_type=13, sortie_id='test-flight',
         mission_fingerprint=mission_digest(plan), search_start_seq=2,search_end_seq=2,route_reviewed=True,
         entry_gates=(((40.999,29.),(41.001,29.)),),
         finish_gate=((40.999,29.),(41.001,29.)),
@@ -78,12 +78,6 @@ def test_speed_limit_is_thousand_for_both_tasks(cfg,options,plan,tmp_path):
     assert center.hardware_problem() is None
     center.store.params['WPNAV_SPEED']=1200
     assert center.hardware_problem() == 'WPNAV_SPEED center görev için 1–1000 cm/s aralığında olmalı'
-    quick,_,_=link_ready(cfg,options,plan,tmp_path/'quick')
-    quick.store.params['WPNAV_SPEED']=1000
-    assert quick.hardware_problem() is None
-    quick.store.params['WPNAV_SPEED']=0
-    assert quick.hardware_problem() == 'WPNAV_SPEED quick görev için 1–1000 cm/s aralığında olmalı'
-
 
 def test_disarmed_link_reloads_live_mission_instead_of_trusting_cached_copy(cfg,options,plan,tmp_path):
     link,conn,_=link_ready(cfg,options,plan,tmp_path)
@@ -242,33 +236,8 @@ def test_mission_contract_rejects_stale_land_minus_one_range(options,plan):
         'Rota taraması TAKEOFF sonrası seçilen waypointten LAND öncesine kadar olmalı')
 
 
-def test_legacy_files_unchanged():
-    manifest=json.loads(Path('docs/competition/legacy-sha256.json').read_text())
-    moved=json.loads(Path('archive/legacy-options/preserved-paths.json').read_text())
-    # Finder metadata'sı Linux'a dağıtılmaz; uygulama/profil kaynaklarını denetle.
-    assert all(hashlib.sha256(Path(moved.get(p,p)).read_bytes()).hexdigest()==digest
-               for p,digest in manifest.items() if Path(p).name != '.DS_Store')
 
 
-@pytest.mark.parametrize('order',[('mavi','kirmizi'),('kirmizi','mavi')])
-def test_quick_two_colors_correct_payload_once(cfg,options,plan,order):
-    c=ready(cfg,options,plan)
-    statuses={}
-    releases=[]
-    mode='AUTO'
-    for i in range(140):
-        now=100+i*.05
-        color=order[0] if not statuses else order[1]
-        d=c.step(now,telemetry(now,mode=mode),(candidate(i,now,color),),i,now,plan,release_status=statuses)
-        for a in d.actions:
-            if a.kind=='mode': mode=a.values[0]
-            assert a.kind!='velocity'
-            if a.kind=='payload':
-                assert mode=='GUIDED' and a.values[-1]=='GUIDED'
-                releases.append(a.values[:2]); statuses[a.values[0]]='SIMULATED'
-    assert releases==[('kirmizi' if color=='mavi' else 'mavi',color) for color in order]
-    assert c.done==set(COLORS)
-    assert not any(a.kind=='mode' for a in d.actions)
 
 
 @pytest.mark.parametrize('kind',['stale','future','duplicate','low_score','wrong_id','wrong_color','outside','takeoff','before_gate','wrong_route'])
@@ -291,13 +260,6 @@ def test_no_release_invalid_inputs(cfg,options,plan,kind):
         assert not any(a.kind=='payload' for a in d.actions)
 
 
-def test_quick_target_jump_and_gap_reset(cfg,options,plan):
-    c=ready(cfg,replace(options,quick_frames=4),plan)
-    for i in range(20):
-        now=100+i*.1
-        box=(.1,.1,.2,.2) if i%2 else (.7,.7,.8,.8)
-        d=c.step(now,telemetry(now),(candidate(i,now,box=box),),i,now,plan)
-        assert not d.actions
 
 
 def test_no_midair_restart_and_pilot_latch(cfg,options,plan):
@@ -313,16 +275,6 @@ def test_no_midair_restart_and_pilot_latch(cfg,options,plan):
     assert not d.actions
 
 
-def test_quick_ack_timeout_never_retries(cfg,options,plan):
-    c=ready(cfg,options,plan)
-    mode='AUTO'
-    for i in range(100):
-        now=100+i*.05
-        d=c.step(now,telemetry(now,mode=mode),(candidate(i,now),),i,now,plan)
-        for a in d.actions:
-            if a.kind=='mode': mode=a.values[0]
-    assert c.state=='ABORTED'
-    assert c.requested=={'mavi'}
 
 
 def test_metric_full_cycle_resume_then_other_color_lands(cfg,options,plan):
@@ -492,18 +444,18 @@ def test_vision_both_colors_and_one_meter_red(cfg):
     candidates,_=vision.detect(frame,PoseSample(100,0,0,0,0,0,-5.05),'center')
     assert {x.color for x in candidates}==set(COLORS)
     assert all(x.metric.camera_height_m==pytest.approx(5.,abs=.1) for x in candidates)
-    candidates,_=DualVision(cfg).detect(frame,None,'quick')
+    candidates,_=DualVision(cfg).detect(frame,None,'center')
     assert len(candidates)==2 and all(x.metric is None for x in candidates)
 
 
 def test_current_profile_readiness_and_safety_fields(cfg):
-    for task in ('ana','hizli'):
-        base,o=Options.load(f'config/{task}-gorev.json')
+    for task in ('ana',):
+        base,o=Options.load('config/ana-imx708.json')
         assert o.vehicle_type==13 and o.servos['mavi'].channel==9 and o.servos['kirmizi'].channel==11
         assert o.servos['mavi'].release_pwm == 1800
         assert o.servos['kirmizi'].function == 61
         assert o.servos['kirmizi'].neutral_pwm == 1500
-        assert bool(o.missing(base)) == (task == 'ana')
+        assert not o.missing(base)
         unchecked=replace(base,mission=replace(base.mission,direct_land_corridor_checked=None))
         assert 'iki yük sonrası doğrudan LAND bölgesinin açık olduğu saha kontrolü' in o.missing(unchecked)
     with pytest.raises(ValueError):
@@ -528,14 +480,6 @@ def test_home_is_not_flight_path_but_nav_changes_are(cfg,options,plan):
     assert mission_digest(new_path)!=mission_digest(plan)
 
 
-def test_strategy_switch_does_not_reset_physical_payload(cfg,options,tmp_path):
-    from safak_gorev2.competition.runtime import CompetitionRuntime
-    a=CompetitionRuntime(replace(cfg,runtime_dir=str(tmp_path/'center')),'observe',options)
-    assert a.payload_ledger.reserve('kirmizi',{})
-    a.close()
-    b=CompetitionRuntime(replace(cfg,runtime_dir=str(tmp_path/'quick')),'observe',replace(options,strategy='quick'))
-    assert b.payload_status=={'kirmizi':'UNCERTAIN'}
-    b.close()
 
 
 def test_resume_only_approved_waypoint_while_owned(cfg,options,plan,tmp_path):
@@ -550,16 +494,12 @@ def test_resume_only_approved_waypoint_while_owned(cfg,options,plan,tmp_path):
     assert conn.mav.mission_set_current_send.call_count==1
 
 
-def test_quick_configuration_needs_no_calibration():
-    cfg,o=Options.load('config/hizli-gorev.json')
-    assert cfg.camera.calibration_file is None
-    assert 'kamera kalibrasyonu' not in o.missing(cfg)
 
 
 def test_observe_runtime_runs_both_colors_without_commands(cfg,options,tmp_path):
     import time
     from safak_gorev2.competition.runtime import CompetitionRuntime
-    cfg=replace(cfg,runtime_dir=str(tmp_path/'quick'))
+    cfg=replace(cfg,runtime_dir=str(tmp_path/'center'))
     rt=CompetitionRuntime(cfg,'observe',options)
     rt.start(connect=False)
     try:
@@ -616,7 +556,7 @@ def test_center_search_speed_upper_bound_follows_braking_analysis():
             replace(Options(), strategy='center', center_search_speed_mps=value).validate()
 
 
-@pytest.mark.parametrize('profile', ['config/ana-gorev.json', 'config/ana-imx708.json',
+@pytest.mark.parametrize('profile', ['config/ana-imx708.json', 'config/ana-imx708.json',
                                      'config/ana-aux1-only.json'])
 def test_main_panel_is_low_bandwidth_but_readable(profile):
     cfg, _ = Options.load(profile)
@@ -649,7 +589,7 @@ def test_aux1_only_hardware_check_and_initial_requests_never_touch_aux3(cfg, opt
     assert not any(name.startswith(b'SERVO11_') for name in names)
 
 
-@pytest.mark.parametrize('profile',['config/ana-gorev.json','config/ana-imx708.json'])
+@pytest.mark.parametrize('profile',['config/ana-imx708.json','config/ana-imx708.json'])
 def test_main_profiles_can_descend_from_competition_altitude(profile):
     # Hedef görülüp ortalandığında 5 m'ye inme süresi
     # merkezleme/alçalma sınırının altında kalmalı (15 m'den yaklaşık 40 s).
@@ -672,7 +612,7 @@ def test_main_profiles_can_descend_from_competition_altitude(profile):
     assert c.center_tolerance_height_ratio*c.target_camera_height_m < c.center_tolerance_m
 
 
-@pytest.mark.parametrize('profile',['config/ana-gorev.json','config/ana-imx708.json'])
+@pytest.mark.parametrize('profile',['config/ana-imx708.json','config/ana-imx708.json'])
 def test_main_profile_tolerances_exceed_measured_pnp_noise(profile):
     # 11 Eylül ana uçuşunda 10 m'de ölçülen PnP saçılması: yatay sd ~0,12 m,
     # görsel yükseklik sd ~0,39 m (9,04–10,15 m). Toleranslar bu gürültünün

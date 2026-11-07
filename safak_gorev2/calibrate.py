@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 
 from .config import Config
-from .hailo_backend import create_picamera
+from .camera_source import create_picamera
 
 
 def solve(folder: Path, cols: int, rows: int, square_mm: float, output: Path,

@@ -64,11 +64,6 @@ def profile_manifest(path):
         result.update(profile_digest=profile_digest(config,options),base_config_sha256=hashlib.sha256(base_path.read_bytes()).hexdigest(),
                       strategy=options.strategy, actuator=options.actuator, sortie_id=options.sortie_id,
                       mission_digest=options.mission_fingerprint, vision_backend='opencv-color')
-    else:
-        # Eski tek-hedef kaydedici kendi model sözleşmesini kullanmaya devam eder.
-        config.verify_model()
-        result.update(hef_file=config.hef_file,
-                      hef_sha256=hashlib.sha256(Path(config.hef_file).read_bytes()).hexdigest())
     return result
 
 

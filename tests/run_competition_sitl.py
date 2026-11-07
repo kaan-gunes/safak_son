@@ -31,7 +31,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ardupilot',type=Path,required=True)
     parser.add_argument('--defaults',type=Path,help='Resmî copter.parm yerel yolu')
-    parser.add_argument('--strategy',choices=('center','quick'),required=True)
+    parser.add_argument('--strategy',choices=('center','center'),required=True)
     parser.add_argument('--mission-scope', action='store_true', help='Güncel saha gibi TAKEOFF–LAND arası tüm waypointleri tara')
     parser.add_argument('--center-recovery', action='store_true', help='10 m ana profil + geçici AUTO hızı')
     parser.add_argument('--deadline', type=float, help='Görev süresi sınırı (s); dolunca LAND')
@@ -164,7 +164,7 @@ def main():
                     cv2.fillConvexPoly(image,q.astype(np.int32),paint)
                     box=tuple(np.clip(np.array([*q.min(axis=0),*q.max(axis=0)])/[1280,720,1280,720],0,1))
                     if (box[0]<box[2] and box[1]<box[3]
-                            and not (args.strategy=='quick' and args.scenario=='false-target'
+                            and not (args.strategy=='center' and args.scenario=='false-target'
                                      and rt.controller.state=='VERIFYING')):
                         ds.append(Detection(color+'_hedef',.95,box))
                 fid+=1
@@ -229,7 +229,7 @@ def main():
                 (root/'result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
                 print('SITL PASS '+str(root),flush=True)
                 return
-            trigger = 'STOPPING' if args.scenario.startswith('pause-') else ('VERIFYING' if args.strategy=='quick' else 'DESCENDING')
+            trigger = 'STOPPING' if args.scenario.startswith('pause-') else ('VERIFYING' if args.strategy=='center' else 'DESCENDING')
             if not injected and d.state==trigger and args.scenario not in ('complete','false-target','no-target','verify-loss','ten-meter'):
                 injected=True
                 if args.scenario in ('pilot','pause-pilot'): slot[0]=1000
@@ -262,7 +262,7 @@ def main():
                         assert rt.link.snapshot_search_speed_status()['status']=='ACCEPTED'
                         assert rt.telemetry.params['WPNAV_SPEED']==1000
                         assert sum(x['kind']=='search_speed' for x in action_history)>=2
-                    if args.strategy=='quick':
+                    if args.strategy=='center':
                         assert not any(x['kind'] in ('velocity','search_speed') for x in action_history)
                         assert len([x for x in action_history if x['kind']=='payload'])==2
                 elif args.scenario=='no-target':

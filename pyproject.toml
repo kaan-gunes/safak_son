@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "safak-gorev2"
 version = "0.1.0"
-description = "ŞAFAK UAV ana ve hızlı Görev 2 uygulaması, kayıt ve salt okunur panel"
+description = "ŞAFAK UAV OpenCV ana görev uygulaması"
 requires-python = ">=3.11"
 dependencies = ["Flask>=2.2,<4", "waitress>=3.0,<4", "pymavlink>=2.4.49,<3", "numpy>=1.24,<3"]
 

@@ -21,7 +21,7 @@ class Frame:
     received_at: float
     image: Any
     detections: tuple[Detection, ...]
-    backend: str = "HAILO"
+    backend: str = "OPENCV"
 
 
 @dataclass(frozen=True)

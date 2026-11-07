@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from safak_gorev2.config import Config
-from safak_gorev2.hailo_backend import create_picamera
+from safak_gorev2.camera_source import create_picamera
 
 
 def test_fixed_focus_zero_is_valid_but_negative_is_rejected():
