@@ -1,4 +1,4 @@
-# ŞAFAK
+# ŞAFAK UAV
 
 Raspberry Pi üzerinde Python 3.11+ ile:
 
